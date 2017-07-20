@@ -1,0 +1,29 @@
+# EditorConfig is awesome:http://EditorConfig.org
+
+
+root = true
+
+
+################################
+[*]
+################################
+
+indent_style = space
+end_of_line = crlf
+insert_final_newline = true
+
+
+################################
+[*.{cs,cshtml}]
+################################
+
+dotnet_sort_system_directives_first = true
+
+csharp_new_line_before_open_brace   = all
+csharp_new_line_before_else         = true
+csharp_new_line_before_catch        = true
+csharp_new_line_before_finally      = true
+csharp_preserve_single_line_blocks  = true
+
+csharp_space_between_parentheses = control_flow_statements
+csharp_space_between_method_declaration_parameter_list_parentheses = true
