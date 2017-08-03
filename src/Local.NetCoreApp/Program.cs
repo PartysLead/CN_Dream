@@ -1,12 +1,11 @@
 ﻿using System;
 
-namespace CN_Dream.Server
+namespace CnDream.Client.NetCoreApp
 {
     class Program
     {
         static void Main( string[] args )
         {
-            Console.WriteLine("Hello World!");
         }
     }
 }

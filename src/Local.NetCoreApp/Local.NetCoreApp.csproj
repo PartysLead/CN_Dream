@@ -3,7 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp1.1</TargetFramework>
-    <RootNamespace>CN_Dream.Server</RootNamespace>
+    <RootNamespace>CnDream.Local.NetCoreApp</RootNamespace>
+    <AssemblyName>CndLocal</AssemblyName>
   </PropertyGroup>
 
 </Project>

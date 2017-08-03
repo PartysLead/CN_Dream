@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26430.16
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Server", "src\Server\Server.csproj", "{661DB9D4-C2A6-461E-A515-3F60CDCBF090}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Remote.NetCoreApp", "src\Remote.NetCoreApp\Remote.NetCoreApp.csproj", "{661DB9D4-C2A6-461E-A515-3F60CDCBF090}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Client", "src\Client\Client.csproj", "{A8AB4FF7-F1B5-4940-8E1B-4F3678878F28}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core", "src\Core\Core.csproj", "{A8AB4FF7-F1B5-4940-8E1B-4F3678878F28}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Client.NetCoreApp", "src\Client.NetCoreApp\Client.NetCoreApp.csproj", "{0E500576-ED9A-4E64-897A-35129BDAEFCB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Local.NetCoreApp", "src\Local.NetCoreApp\Local.NetCoreApp.csproj", "{0E500576-ED9A-4E64-897A-35129BDAEFCB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

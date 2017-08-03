@@ -3,7 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp1.1</TargetFramework>
-    <RootNamespace>CN_Dream.Client.NetCoreApp</RootNamespace>
+    <RootNamespace>CnDream.Remote.NetCoreApp</RootNamespace>
+    <AssemblyName>CndRemote</AssemblyName>
   </PropertyGroup>
 
 </Project>
