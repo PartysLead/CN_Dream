@@ -1,8 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Sockets;
-using System.Text;
+using System.Threading.Tasks;
 
 namespace CnDream.Core
 {
@@ -11,48 +11,48 @@ namespace CnDream.Core
         readonly IChannelStation ChannelStation;
         readonly IPool<SocketAsyncEventArgs> SocketAsyncEventArgsPool;
         readonly IPool<ArraySegment<byte>> BufferPool;
-        readonly Dictionary<int, (Socket socket, SocketAsyncEventArgs socketAsyncEventArgs, ArraySegment<byte> buffer)> EndPointSockets;
 
-        public EndPointStation( IChannelStation channelStation, IPool<SocketAsyncEventArgs> saePool, IPool<ArraySegment<byte>> bufferPool )
+        readonly ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, ArraySegment<byte> recvBuffer)> EndPointSockets;
+
+        public EndPointStation( IChannelStation channelStation, IPool<SocketAsyncEventArgs> argsPool, IPool<ArraySegment<byte>> bufferPool )
         {
             ChannelStation = channelStation;
-            SocketAsyncEventArgsPool = saePool;
+            SocketAsyncEventArgsPool = argsPool;
             BufferPool = bufferPool;
-            EndPointSockets = new Dictionary<int, (Socket, SocketAsyncEventArgs, ArraySegment<byte>)>();
+            EndPointSockets = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs, ArraySegment<byte>)>();
         }
 
         public void AddEndPoint( int pairId, Socket endpointSocket )
         {
-            var socketAsyncEventArgs = SocketAsyncEventArgsPool.Acquire();
-            var buffer = BufferPool.Acquire();
-            socketAsyncEventArgs.SetBuffer(buffer.Array, buffer.Offset, buffer.Count);
-            socketAsyncEventArgs.UserToken = new PairInfo { PairId = pairId };
+            var endpoint = AcquireEndPointResources(pairId, endpointSocket);
 
-            EndPointSockets.Add(pairId, (endpointSocket, socketAsyncEventArgs, buffer));
-
-            if ( endpointSocket.ReceiveAsync(socketAsyncEventArgs) )
+            if ( EndPointSockets.TryAdd(pairId, endpoint) )
             {
-                socketAsyncEventArgs.Completed += OnEndPointReceived;
+                BeginReceive(endpointSocket, endpoint.recvArgs);
             }
             else
             {
-                OnEndPointReceived(endpointSocket, socketAsyncEventArgs);
+                ReleaseEndPointResources(endpoint);
             }
         }
 
-        private async void OnEndPointReceived( object sender, SocketAsyncEventArgs socketAsyncEventArgs )
+        private void BeginReceive( Socket endpointSocket, SocketAsyncEventArgs args )
+        {
+            if ( !endpointSocket.ReceiveAsync(args) )
+            {
+                OnEndPointReceived(endpointSocket, args);
+            }
+        }
+
+        private async void OnEndPointReceived( object sender, SocketAsyncEventArgs args )
         {
             var endpointSocket = (Socket)sender;
-            var pairId = ((PairInfo)socketAsyncEventArgs.UserToken).PairId;
-            if ( socketAsyncEventArgs.SocketError == SocketError.Success )
+            var pairId = ((PairInfo)args.UserToken).PairId;
+            if ( args.SocketError == SocketError.Success )
             {
-                var channel = ChannelStation.GetStream(pairId);
-                await channel.WriteAsync(socketAsyncEventArgs.Buffer, socketAsyncEventArgs.Offset, socketAsyncEventArgs.BytesTransferred);
+                await ChannelStation.SendDataAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
 
-                if ( !endpointSocket.ReceiveAsync(socketAsyncEventArgs) )
-                {
-                    OnEndPointReceived(endpointSocket, socketAsyncEventArgs);
-                }
+                BeginReceive(endpointSocket, args);
             }
             else
             {
@@ -62,22 +62,52 @@ namespace CnDream.Core
 
         public void RemoveEndPoint( int pairId )
         {
-            throw new NotImplementedException();
-            if ( EndPointSockets.TryGetValue(pairId, out var tuple) )
+            if ( EndPointSockets.TryRemove(pairId, out var endpoint) )
             {
+                ReleaseEndPointResources(endpoint);
             }
         }
 
-        public bool TryFindEndPoint( int pairId, out Stream sendStream )
+        private (Socket, SocketAsyncEventArgs recvArgs, ArraySegment<byte>) AcquireEndPointResources( int pairId, Socket endpointSocket )
         {
-            if ( EndPointSockets.TryGetValue(pairId, out var tuple))
-            {
-                sendStream = new NetworkStream(tuple.socket);
-                return true;
-            }
+            var args = SocketAsyncEventArgsPool.Acquire();
+            var buffer = BufferPool.Acquire();
 
-            sendStream = null;
-            return false;
+            args.Completed += OnEndPointReceived;
+            args.SetBuffer(buffer.Array, buffer.Offset, buffer.Count);
+            args.UserToken = new PairInfo { PairId = pairId };
+
+            return (endpointSocket, args, buffer);
+        }
+
+        private void ReleaseEndPointResources( (Socket socket, SocketAsyncEventArgs recvArgs, ArraySegment<byte> recvBuffer) endpoint )
+        {
+            var recvArgs = endpoint.recvArgs;
+
+            recvArgs.Completed -= OnEndPointReceived;
+            recvArgs.SetBuffer(null, 0, 0);
+            recvArgs.UserToken = null;
+
+            SocketAsyncEventArgsPool.Release(recvArgs);
+            BufferPool.Release(endpoint.recvBuffer);
+        }
+
+        public Task SendDataAsync( int pairId, byte[] sendBuffer, int offset, int count )
+        {
+            throw new NotImplementedException();
+
+            if ( EndPointSockets.TryGetValue(pairId, out var endpoint) )
+            {
+                var endpointSocket = endpoint.socket;
+
+                var sendArgs = SocketAsyncEventArgsPool.Acquire();
+                sendArgs.SetBuffer(sendBuffer, offset, count);
+
+                if ( true )
+                {
+
+                }
+            }
         }
 
         class PairInfo

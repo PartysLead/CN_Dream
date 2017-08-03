@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace CnDream.Client.NetCoreApp
+namespace CnDream.Local.NetCoreApp
 {
     class Program
     {

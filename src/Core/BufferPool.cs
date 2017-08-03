@@ -6,7 +6,9 @@ namespace CnDream.Core
 {
     public class BufferPool : Pool<ArraySegment<byte>>
     {
-        protected override ArraySegment<byte> CreateObject()
+        byte[] TheBigBuffer;
+
+        protected override bool CreateObject( out ArraySegment<byte> obj )
         {
             throw new NotImplementedException();
         }

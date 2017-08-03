@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace CnDream.Core
 {
@@ -10,6 +11,7 @@ namespace CnDream.Core
     {
         void AddEndPoint( int pairId, Socket endpointSocket );
         void RemoveEndPoint( int pairId );
-        bool TryFindEndPoint( int pairId, out Stream sendStream );
+
+        Task SendDataAsync( int pairId, byte[] buffer, int offset, int count );
     }
 }

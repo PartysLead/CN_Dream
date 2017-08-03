@@ -6,16 +6,18 @@ namespace CnDream.Core
 {
     public abstract class Pool<T> : IPool<T>
     {
-        public T Acquire()
+        protected T[] FreeObjects;
+
+        public virtual T Acquire()
         {
             throw new NotImplementedException();
         }
 
-        public void Release( T t )
+        public virtual void Release( T t )
         {
             throw new NotImplementedException();
         }
 
-        protected abstract T CreateObject();
+        protected abstract bool CreateObject( out T obj );
     }
 }

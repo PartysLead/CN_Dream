@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace CnDream.Server
+namespace CnDream.Remote.NetCoreApp
 {
     class Program
     {

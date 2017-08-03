@@ -7,7 +7,7 @@ namespace CnDream.Core
 {
     public class SocketAsyncEventArgsPool : Pool<SocketAsyncEventArgs>
     {
-        protected override SocketAsyncEventArgs CreateObject()
+        protected override bool CreateObject( out SocketAsyncEventArgs obj )
         {
             throw new NotImplementedException();
         }
