@@ -9,20 +9,18 @@ namespace CnDream.Core
     public class EndPointStation : IEndPointStation
     {
         readonly IChannelStation ChannelStation;
-        readonly IPool<SocketAsyncEventArgs> SocketAsyncEventArgsPool;
-        readonly IPool<ArraySegment<byte>> BufferPool;
-        readonly IDataSender DataSender;
+        readonly IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        readonly IDataSenderProvider DetransformerProvider;
 
-        readonly ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs)> EndPointSockets;
+        readonly ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> EndPointSockets;
 
-        public EndPointStation( IChannelStation channelStation, IPool<SocketAsyncEventArgs> argsPool, IPool<ArraySegment<byte>> bufferPool, IDataSender dataSender )
+        public EndPointStation( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool, IDataSenderProvider detransformerProvider )
         {
             ChannelStation = channelStation;
-            SocketAsyncEventArgsPool = argsPool;
-            BufferPool = bufferPool;
-            DataSender = dataSender;
+            ReceiveEventArgsPool = recvArgsPool;
+            DetransformerProvider = detransformerProvider;
 
-            EndPointSockets = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs)>();
+            EndPointSockets = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
         }
 
         public void AddEndPoint( int pairId, Socket endpointSocket )
@@ -53,8 +51,8 @@ namespace CnDream.Core
             var pairId = ((PairInfo)args.UserToken).PairId;
             if ( args.SocketError == SocketError.Success )
             {
-                // TODO: Error handling?
-                await ChannelStation.SendDataAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
+                // TODO: Error handling??
+                await ChannelStation.GetTransformer(pairId).SendDataAsync(args.Buffer, args.Offset, args.BytesTransferred);
 
                 BeginReceive(endpointSocket, args);
             }
@@ -72,37 +70,37 @@ namespace CnDream.Core
             }
         }
 
-        private (Socket, SocketAsyncEventArgs recvArgs) AcquireEndPointResources( int pairId, Socket endpointSocket )
+        private (Socket, BufferedSocketAsyncEventArgs recvArgs) AcquireEndPointResources( int pairId, Socket endpointSocket )
         {
-            var args = SocketAsyncEventArgsPool.Acquire();
-            var buffer = BufferPool.Acquire();
+            var args = ReceiveEventArgsPool.Acquire();
 
             args.Completed += OnEndPointSocketReceived;
-            args.SetBuffer(buffer.Array, buffer.Offset, buffer.Count);
             args.UserToken = new PairInfo { PairId = pairId };
 
             return (endpointSocket, args);
         }
 
-        private void ReleaseEndPointResources( (Socket, SocketAsyncEventArgs recvArgs) endpoint )
+        private void ReleaseEndPointResources( (Socket, BufferedSocketAsyncEventArgs recvArgs) endpoint )
         {
             var recvArgs = endpoint.recvArgs;
             var recvBuffer = new ArraySegment<byte>(recvArgs.Buffer, recvArgs.Offset, recvArgs.Count);
 
             recvArgs.Completed -= OnEndPointSocketReceived;
-            recvArgs.SetBuffer(null, 0, 0);
             recvArgs.UserToken = null;
 
-            SocketAsyncEventArgsPool.Release(recvArgs);
-
-            BufferPool.Release(recvBuffer);
+            ReceiveEventArgsPool.Release(recvArgs);
         }
 
-        public async Task SendDataAsync( int pairId, byte[] sendBuffer, int offset, int count )
+        public IDataSender GetDetransformer( int pairId )
         {
             if ( EndPointSockets.TryGetValue(pairId, out var endpoint) )
             {
-                await DataSender.SendDataAsync(endpoint.socket, sendBuffer, offset, count);
+                return DetransformerProvider.ProvideDataSender(pairId, endpoint.socket);
+            }
+            else
+            {
+                // TODO: Error handling??
+                return null;
             }
         }
 

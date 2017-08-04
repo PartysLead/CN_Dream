@@ -12,6 +12,6 @@ namespace CnDream.Core
         void AddChannel( Socket channelSocket );
         void RemoveChannel( Socket channelSocket );
 
-        Task SendDataAsync( int pairId, byte[] buffer, int offset, int count );
+        IDataSender GetTransformer( int pairId );
     }
 }
