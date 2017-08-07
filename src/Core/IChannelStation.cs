@@ -13,5 +13,6 @@ namespace CnDream.Core
         void RemoveChannel( Socket channelSocket );
 
         IDataSender GetTransformer( int pairId );
+        void ReturnTransformer( int pairId, IDataSender transformer );
     }
 }

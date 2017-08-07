@@ -33,6 +33,7 @@ namespace CnDream.Core
             }
             else
             {
+                // TODO: ?????
                 ReleaseEndPointResources(endpoint);
             }
         }
