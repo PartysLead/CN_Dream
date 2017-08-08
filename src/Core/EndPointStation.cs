@@ -10,15 +10,13 @@ namespace CnDream.Core
     {
         readonly IChannelStation ChannelStation;
         readonly IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
-        readonly IDataSenderProvider DetransformerProvider;
 
         readonly ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> EndPointSockets;
 
-        public EndPointStation( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool, IDataSenderProvider detransformerProvider )
+        public EndPointStation( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
             ChannelStation = channelStation;
             ReceiveEventArgsPool = recvArgsPool;
-            DetransformerProvider = detransformerProvider;
 
             EndPointSockets = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
         }
@@ -53,7 +51,7 @@ namespace CnDream.Core
             if ( args.SocketError == SocketError.Success )
             {
                 // TODO: Error handling??
-                await ChannelStation.GetTransformer(pairId).SendDataAsync(args.Buffer, args.Offset, args.BytesTransferred);
+                await ChannelStation.HandleEndPointDataReceivedAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
 
                 BeginReceive(endpointSocket, args);
             }
@@ -73,18 +71,17 @@ namespace CnDream.Core
 
         private (Socket, BufferedSocketAsyncEventArgs recvArgs) AcquireEndPointResources( int pairId, Socket endpointSocket )
         {
-            var args = ReceiveEventArgsPool.Acquire();
+            var recvArgs = ReceiveEventArgsPool.Acquire();
 
-            args.Completed += OnEndPointSocketReceived;
-            args.UserToken = new PairInfo { PairId = pairId };
+            recvArgs.Completed += OnEndPointSocketReceived;
+            recvArgs.UserToken = new PairInfo { PairId = pairId };
 
-            return (endpointSocket, args);
+            return (endpointSocket, recvArgs);
         }
 
         private void ReleaseEndPointResources( (Socket, BufferedSocketAsyncEventArgs recvArgs) endpoint )
         {
             var recvArgs = endpoint.recvArgs;
-            var recvBuffer = new ArraySegment<byte>(recvArgs.Buffer, recvArgs.Offset, recvArgs.Count);
 
             recvArgs.Completed -= OnEndPointSocketReceived;
             recvArgs.UserToken = null;
@@ -92,17 +89,9 @@ namespace CnDream.Core
             ReceiveEventArgsPool.Release(recvArgs);
         }
 
-        public IDataSender GetDetransformer( int pairId )
+        public Task HandleChannelReceivedDataAsync( byte[] buffer, int offset, int count )
         {
-            if ( EndPointSockets.TryGetValue(pairId, out var endpoint) )
-            {
-                return DetransformerProvider.ProvideDataSender(pairId, endpoint.socket);
-            }
-            else
-            {
-                // TODO: Error handling??
-                return null;
-            }
+            throw new NotImplementedException();
         }
 
         class PairInfo

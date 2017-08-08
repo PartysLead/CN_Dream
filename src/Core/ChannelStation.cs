@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,85 +10,119 @@ namespace CnDream.Core
 {
     public class ChannelStation : IChannelStation
     {
-        readonly IEndPointStation EndPointStation;
+        IEndPointStation EndPointStation;
         readonly IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
-        readonly IDataSenderProvider TransformerProvider;
 
-        const int IdlePairId = 0;
-        const int ChannelSocketBucketSize = 128;
-        int[] ChannelSocketPairIds = new int[ChannelSocketBucketSize];
-        Socket[] ChannelSockets = new Socket[ChannelSocketBucketSize];
+        const int PairId_Idle = -1;
+        const int PairId_Invalid = 0;
+        const int ChannelStatus_NoChannel = 0;
+        const int ChannelStatus_Idle = 1;
+        const int ChannelStatus_Pending = 2;
+        const int ChannelSocketBucketSize = 256;
+        readonly int[] ChannelStatuses = new int[ChannelSocketBucketSize];
+        readonly (int pairId, Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
+            = new(int, Socket, BufferedSocketAsyncEventArgs)[ChannelSocketBucketSize];
 
-        public ChannelStation( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool, IDataSenderProvider transformerProvider )
+        public ChannelStation( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
-            TransformerProvider = transformerProvider;
         }
 
         public void AddChannel( Socket channelSocket )
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelSockets[i], channelSocket, null) == null )
+                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_NoChannel) != ChannelStatus_NoChannel )
                 {
-                    ChannelSocketPairIds[i] = IdlePairId;
-
-                    // TODO: Hook up things.
-                    break;
+                    continue;
                 }
+
+                ref var channel = ref Channels[i];
+                Debug.Assert(channel.socket == null, "BUG: Channel not cleaned up properly previously!");
+
+                channel.socket = channelSocket;
+                channel.pairId = PairId_Idle;
+
+                var recvArgs = ReceiveEventArgsPool.Acquire();
+                channel.recvArgs = recvArgs;
+                recvArgs.Completed += OnChannelSocketReceived;
+
+                BeginReceive(channelSocket, recvArgs);
+
+                Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
+
+                break;
             }
 
             throw new NotImplementedException("Cannot handle adding more channels for now..");
+        }
+
+        private void BeginReceive( Socket channelSocket, SocketAsyncEventArgs recvArgs )
+        {
+            if ( !channelSocket.ReceiveAsync(recvArgs) )
+            {
+                OnChannelSocketReceived(channelSocket, recvArgs);
+            }
+        }
+
+        private async void OnChannelSocketReceived( object sender, SocketAsyncEventArgs e )
+        {
+            var socket = (Socket)sender;
+            await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
+            BeginReceive(socket, e);
         }
 
         public void RemoveChannel( Socket channelSocket )
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelSockets[i], null, channelSocket) == channelSocket )
+                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_Idle) != ChannelStatus_Idle )
                 {
-                    // TODO: Un-hook things.
+                    continue;
+                }
+
+                ref var channel = ref Channels[i];
+                if ( channel.socket != channelSocket )
+                {
+                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
+                }
+                else
+                {
+                    channel.pairId = PairId_Invalid;
+                    channel.socket = null;
+
+                    var recvArgs = channel.recvArgs;
+                    channel.recvArgs = null;
+                    recvArgs.Completed -= OnChannelSocketReceived;
+
+                    ReceiveEventArgsPool.Release(recvArgs);
+
+                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_NoChannel);
                     break;
                 }
             }
 
-            throw new ArgumentException("BUG: Removing a channel that is not added!", nameof(channelSocket));
+            throw new ArgumentException("BUG: Removing a channel that is not been added or being used!", nameof(channelSocket));
         }
 
-        public IDataSender GetTransformer( int pairId )
+        public async Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count )
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelSocketPairIds[i], pairId, IdlePairId) == IdlePairId )
+                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_Idle) != ChannelStatus_Idle )
                 {
-                    var socket = ChannelSockets[i];
-                    if ( socket != null )
-                    {
-                        return TransformerProvider.ProvideDataSender(pairId, socket);
-                    }
+                    continue;
+                }
+                try
+                {
+                    throw new NotImplementedException();
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
                 }
             }
-
-            // TODO: ????
-            return null;
-        }
-
-        public void ReturnTransformer( int pairId, IDataSender transformer )
-        {
-            for ( int i = 0; i < ChannelSocketBucketSize; i++ )
-            {
-                if ( Interlocked.CompareExchange(ref ChannelSocketPairIds[i], IdlePairId, pairId) == pairId )
-                {
-                    var socket = ChannelSockets[i];
-                    if ( socket != null )
-                    {
-                        return;
-                    }
-                }
-            }
-
-            throw new ArgumentException("BUG: Marking a non-existent channel as idle!", nameof(pairId));
         }
     }
 }
