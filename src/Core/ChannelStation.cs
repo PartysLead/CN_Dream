@@ -13,15 +13,13 @@ namespace CnDream.Core
         IEndPointStation EndPointStation;
         IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
 
-        const int PairId_Idle = -1;
-        const int PairId_Invalid = 0;
-        const int ChannelStatus_NoChannel = 0;
-        const int ChannelStatus_Idle = 1;
-        const int ChannelStatus_Pending = 2;
+        const int Slot_Empty = 0;
+        const int Slot_Clean = 1;
+        const int Slot_Dirty = 2;
         const int ChannelSocketBucketSize = 256;
-        readonly int[] ChannelStatuses = new int[ChannelSocketBucketSize];
-        readonly (int pairId, Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
-            = new(int, Socket, BufferedSocketAsyncEventArgs)[ChannelSocketBucketSize];
+        readonly int[] ChannelSlots = new int[ChannelSocketBucketSize];
+        readonly (Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
+            = new(Socket, BufferedSocketAsyncEventArgs)[ChannelSocketBucketSize];
 
         public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
@@ -33,7 +31,7 @@ namespace CnDream.Core
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_NoChannel) != ChannelStatus_NoChannel )
+                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Empty) != Slot_Empty )
                 {
                     continue;
                 }
@@ -42,7 +40,6 @@ namespace CnDream.Core
                 Debug.Assert(channel.socket == null, "BUG: Channel not cleaned up properly previously!");
 
                 channel.socket = channelSocket;
-                channel.pairId = PairId_Idle;
 
                 var recvArgs = ReceiveEventArgsPool.Acquire();
                 channel.recvArgs = recvArgs;
@@ -50,7 +47,7 @@ namespace CnDream.Core
 
                 BeginReceive(channelSocket, recvArgs);
 
-                Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
+                Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
 
                 break;
             }
@@ -69,6 +66,7 @@ namespace CnDream.Core
         private async void OnChannelSocketReceived( object sender, SocketAsyncEventArgs e )
         {
             var socket = (Socket)sender;
+            // TODO: Error handling??
             await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
             BeginReceive(socket, e);
         }
@@ -77,7 +75,7 @@ namespace CnDream.Core
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_Idle) != ChannelStatus_Idle )
+                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
                 {
                     continue;
                 }
@@ -85,11 +83,10 @@ namespace CnDream.Core
                 ref var channel = ref Channels[i];
                 if ( channel.socket != channelSocket )
                 {
-                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
+                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
                 }
                 else
                 {
-                    channel.pairId = PairId_Invalid;
                     channel.socket = null;
 
                     var recvArgs = channel.recvArgs;
@@ -98,7 +95,7 @@ namespace CnDream.Core
 
                     ReceiveEventArgsPool.Release(recvArgs);
 
-                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_NoChannel);
+                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Empty);
                     break;
                 }
             }
@@ -110,7 +107,7 @@ namespace CnDream.Core
         {
             for ( int i = 0; i < ChannelSocketBucketSize; i++ )
             {
-                if ( Interlocked.CompareExchange(ref ChannelStatuses[i], ChannelStatus_Pending, ChannelStatus_Idle) != ChannelStatus_Idle )
+                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
                 {
                     continue;
                 }
@@ -120,7 +117,7 @@ namespace CnDream.Core
                 }
                 finally
                 {
-                    Interlocked.Exchange(ref ChannelStatuses[i], ChannelStatus_Idle);
+                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
                 }
             }
         }
