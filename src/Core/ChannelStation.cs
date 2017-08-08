@@ -16,10 +16,11 @@ namespace CnDream.Core
         const int Slot_Empty = 0;
         const int Slot_Clean = 1;
         const int Slot_Dirty = 2;
-        const int ChannelSocketBucketSize = 256;
-        readonly int[] ChannelSlots = new int[ChannelSocketBucketSize];
+        const int MaxChannels = 256;
+        readonly int[] ChannelSlots = new int[MaxChannels];
+        readonly int[] ChannelSends = new int[MaxChannels];
         readonly (Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
-            = new(Socket, BufferedSocketAsyncEventArgs)[ChannelSocketBucketSize];
+            = new(Socket, BufferedSocketAsyncEventArgs)[MaxChannels];
 
         public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
@@ -29,7 +30,7 @@ namespace CnDream.Core
 
         public void AddChannel( Socket channelSocket )
         {
-            for ( int i = 0; i < ChannelSocketBucketSize; i++ )
+            for ( int i = 0; i < MaxChannels; i++ )
             {
                 if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Empty) != Slot_Empty )
                 {
@@ -66,14 +67,21 @@ namespace CnDream.Core
         private async void OnChannelSocketReceived( object sender, SocketAsyncEventArgs e )
         {
             var socket = (Socket)sender;
+            if ( e.SocketError == SocketError.Success )
+            {
+                if ( e.BytesTransferred != 0 )
+                {
+                    await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
+
+                    BeginReceive(socket, e);
+                }
+            }
             // TODO: Error handling??
-            await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
-            BeginReceive(socket, e);
         }
 
         public void RemoveChannel( Socket channelSocket )
         {
-            for ( int i = 0; i < ChannelSocketBucketSize; i++ )
+            for ( int i = 0; i < MaxChannels; i++ )
             {
                 if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
                 {
@@ -105,7 +113,7 @@ namespace CnDream.Core
 
         public async Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count )
         {
-            for ( int i = 0; i < ChannelSocketBucketSize; i++ )
+            for ( int i = 0; i < MaxChannels; i++ )
             {
                 if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
                 {
@@ -113,6 +121,11 @@ namespace CnDream.Core
                 }
                 try
                 {
+                    if ( Interlocked.CompareExchange(ref ChannelSends[i], 1, 0) != 0 )
+                    {
+                        continue;
+                    }
+
                     throw new NotImplementedException();
                 }
                 finally
