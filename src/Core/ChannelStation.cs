@@ -11,7 +11,7 @@ namespace CnDream.Core
     public class ChannelStation : IChannelStation
     {
         IEndPointStation EndPointStation;
-        readonly IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
 
         const int PairId_Idle = -1;
         const int PairId_Invalid = 0;
@@ -23,7 +23,7 @@ namespace CnDream.Core
         readonly (int pairId, Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
             = new(int, Socket, BufferedSocketAsyncEventArgs)[ChannelSocketBucketSize];
 
-        public ChannelStation( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
+        public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;

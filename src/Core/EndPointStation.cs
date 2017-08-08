@@ -8,17 +8,16 @@ namespace CnDream.Core
 {
     public class EndPointStation : IEndPointStation
     {
-        readonly IChannelStation ChannelStation;
-        readonly IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        IChannelStation ChannelStation;
+        IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
 
-        readonly ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> EndPointSockets;
+        readonly ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> EndPointSockets
+            = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
 
-        public EndPointStation( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
+        public void Initialize( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
             ChannelStation = channelStation;
             ReceiveEventArgsPool = recvArgsPool;
-
-            EndPointSockets = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
         }
 
         public void AddEndPoint( int pairId, Socket endpointSocket )
