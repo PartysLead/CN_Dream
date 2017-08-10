@@ -113,6 +113,11 @@ namespace CnDream.Core
 
         public async Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count )
         {
+            if ( count == 0 )
+            {
+                return;
+            }
+
             for ( int i = 0; i < MaxChannels; i++ )
             {
                 if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
