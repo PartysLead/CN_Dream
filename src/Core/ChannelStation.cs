@@ -131,6 +131,8 @@ namespace CnDream.Core
                         continue;
                     }
 
+                    SocketAsyncEventArgs e;
+
                     throw new NotImplementedException();
                 }
                 finally
