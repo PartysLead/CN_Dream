@@ -49,22 +49,17 @@ namespace CnDream.Core
             var pairId = ((PairInfo)args.UserToken).PairId;
             if ( args.SocketError == SocketError.Success )
             {
-                // TODO: Error handling??
-                await ChannelStation.HandleEndPointDataReceivedAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
+                if ( args.BytesTransferred > 0 )
+                {
+                    // TODO: Error handling??
+                    await ChannelStation.HandleEndPointDataReceivedAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
 
-                BeginReceive(endpointSocket, args);
+                    BeginReceive(endpointSocket, args);
+                }
             }
             else
             {
                 RemoveEndPoint(pairId);
-            }
-        }
-
-        public void RemoveEndPoint( int pairId )
-        {
-            if ( EndPointSockets.TryRemove(pairId, out var endpoint) )
-            {
-                ReleaseEndPointResources(endpoint);
             }
         }
 
@@ -86,6 +81,14 @@ namespace CnDream.Core
             recvArgs.UserToken = null;
 
             ReceiveEventArgsPool.Release(recvArgs);
+        }
+
+        public void RemoveEndPoint( int pairId )
+        {
+            if ( EndPointSockets.TryRemove(pairId, out var endpoint) )
+            {
+                ReleaseEndPointResources(endpoint);
+            }
         }
 
         public Task HandleChannelReceivedDataAsync( byte[] buffer, int offset, int count )

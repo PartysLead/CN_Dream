@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,14 +14,11 @@ namespace CnDream.Core
         IEndPointStation EndPointStation;
         IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
 
-        const int Slot_Empty = 0;
-        const int Slot_Clean = 1;
-        const int Slot_Dirty = 2;
-        const int MaxChannels = 256;
-        readonly int[] ChannelSlots = new int[MaxChannels];
-        readonly int[] ChannelSends = new int[MaxChannels];
-        readonly (Socket socket, BufferedSocketAsyncEventArgs recvArgs)[] Channels
-            = new(Socket, BufferedSocketAsyncEventArgs)[MaxChannels];
+        int ChannelIdSeed = 0;
+        ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> Channels
+            = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
+        ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
+        ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
         public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
         {
@@ -28,32 +26,25 @@ namespace CnDream.Core
             ReceiveEventArgsPool = recvArgsPool;
         }
 
-        public void AddChannel( Socket channelSocket )
+        public bool TryAddChannel( Socket channelSocket, out int channelId )
         {
-            for ( int i = 0; i < MaxChannels; i++ )
+            channelId = Interlocked.Increment(ref ChannelIdSeed);
+
+            var recvArgs = AcquireRecvArgs();
+
+            if ( Channels.TryAdd(channelId, (channelSocket, recvArgs)) )
             {
-                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Empty) != Slot_Empty )
-                {
-                    continue;
-                }
-
-                ref var channel = ref Channels[i];
-                Debug.Assert(channel.socket == null, "BUG: Channel not cleaned up properly previously!");
-
-                channel.socket = channelSocket;
-
-                var recvArgs = ReceiveEventArgsPool.Acquire();
-                channel.recvArgs = recvArgs;
-                recvArgs.Completed += OnChannelSocketReceived;
-
+                FreeChannels.Add(channelId);
                 BeginReceive(channelSocket, recvArgs);
 
-                Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
-
-                break;
+                return true;
             }
+            else
+            {
+                ReleaseRecvArgs(recvArgs);
 
-            throw new NotImplementedException("Cannot handle adding more channels for now..");
+                return false;
+            }
         }
 
         private void BeginReceive( Socket channelSocket, SocketAsyncEventArgs recvArgs )
@@ -69,7 +60,7 @@ namespace CnDream.Core
             var socket = (Socket)sender;
             if ( e.SocketError == SocketError.Success )
             {
-                if ( e.BytesTransferred != 0 )
+                if ( e.BytesTransferred > 0 )
                 {
                     await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
 
@@ -79,67 +70,67 @@ namespace CnDream.Core
             // TODO: Error handling??
         }
 
-        public void RemoveChannel( Socket channelSocket )
+        private BufferedSocketAsyncEventArgs AcquireRecvArgs()
         {
-            for ( int i = 0; i < MaxChannels; i++ )
+            var recvArgs = ReceiveEventArgsPool.Acquire();
+            recvArgs.Completed += OnChannelSocketReceived;
+            return recvArgs;
+        }
+
+        private void ReleaseRecvArgs( BufferedSocketAsyncEventArgs recvArgs )
+        {
+            recvArgs.Completed -= OnChannelSocketReceived;
+            ReceiveEventArgsPool.Release(recvArgs);
+        }
+
+        public bool TryRemoveChannel( int channelId, out Socket socket )
+        {
+            var result = Channels.TryRemove(channelId, out var channel);
+            socket = channel.socket;
+
+            if ( result )
             {
-                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
-                {
-                    continue;
-                }
-
-                ref var channel = ref Channels[i];
-                if ( channel.socket != channelSocket )
-                {
-                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
-                }
-                else
-                {
-                    channel.socket = null;
-
-                    var recvArgs = channel.recvArgs;
-                    channel.recvArgs = null;
-                    recvArgs.Completed -= OnChannelSocketReceived;
-
-                    ReceiveEventArgsPool.Release(recvArgs);
-
-                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Empty);
-                    break;
-                }
+                ReleaseRecvArgs(channel.recvArgs);
             }
 
-            throw new ArgumentException("BUG: Removing a channel that is not been added or being used!", nameof(channelSocket));
+            return result;
         }
 
         public async Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count )
         {
-            if ( count == 0 )
+            var wasPaired = PairedChannels.TryGetValue(pairId, out var channelId);
+            if ( !wasPaired )
             {
+                var nowPaired = false;
+                do
+                {
+                    if ( FreeChannels.TryTake(out var freeChannelId) )
+                    {
+                        if ( Channels.ContainsKey(freeChannelId) )
+                        {
+                            channelId = freeChannelId;
+                            nowPaired = PairedChannels.TryAdd(pairId, channelId);
+                        }
+                    }
+                    else
+                    {
+                        // TODO: No free channels left! Need handle this depend on whether we're remote or local.
+                    }
+                }
+                while ( !nowPaired );
+            }
+
+            if ( !Channels.TryGetValue(channelId, out var channel) )
+            {
+                // Channel just got removed right after we choose it for pair, need to find another.
+
+                PairedChannels.TryRemove(channelId, out _);
+
+                await HandleEndPointDataReceivedAsync(pairId, buffer, offset, count);
                 return;
             }
 
-            for ( int i = 0; i < MaxChannels; i++ )
-            {
-                if ( Interlocked.CompareExchange(ref ChannelSlots[i], Slot_Dirty, Slot_Clean) != Slot_Clean )
-                {
-                    continue;
-                }
-                try
-                {
-                    if ( Interlocked.CompareExchange(ref ChannelSends[i], 1, 0) != 0 )
-                    {
-                        continue;
-                    }
-
-                    SocketAsyncEventArgs e;
-
-                    throw new NotImplementedException();
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref ChannelSlots[i], Slot_Clean);
-                }
-            }
+            
         }
     }
 }

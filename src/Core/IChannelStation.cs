@@ -9,8 +9,8 @@ namespace CnDream.Core
 {
     public interface IChannelStation
     {
-        void AddChannel( Socket channelSocket );
-        void RemoveChannel( Socket channelSocket );
+        bool TryAddChannel( Socket channelSocket, out int channelId );
+        bool TryRemoveChannel( int channelId, out Socket channelSocket );
 
         Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count );
     }
