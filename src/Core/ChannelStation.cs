@@ -108,7 +108,7 @@ namespace CnDream.Core
             return result;
         }
 
-        public async Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count )
+        public async Task HandleEndPointReceivedDataAsync( int pairId, byte[] buffer, int offset, int count )
         {
             var wasPaired = PairedChannels.TryGetValue(pairId, out var channelId);
             if ( !wasPaired )
@@ -138,7 +138,7 @@ namespace CnDream.Core
 
                 PairedChannels.TryRemove(channelId, out _);
 
-                await HandleEndPointDataReceivedAsync(pairId, buffer, offset, count);
+                await HandleEndPointReceivedDataAsync(pairId, buffer, offset, count);
                 return;
             }
 

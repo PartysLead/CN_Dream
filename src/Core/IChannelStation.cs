@@ -12,6 +12,6 @@ namespace CnDream.Core
         bool TryAddChannel( Socket channelSocket, out int channelId );
         bool TryRemoveChannel( int channelId, out Socket channelSocket );
 
-        Task HandleEndPointDataReceivedAsync( int pairId, byte[] buffer, int offset, int count );
+        Task HandleEndPointReceivedDataAsync( int pairId, byte[] buffer, int offset, int count );
     }
 }

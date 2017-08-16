@@ -52,7 +52,7 @@ namespace CnDream.Core
                 if ( args.BytesTransferred > 0 )
                 {
                     // TODO: Error handling??
-                    await ChannelStation.HandleEndPointDataReceivedAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
+                    await ChannelStation.HandleEndPointReceivedDataAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
 
                     BeginReceive(endpointSocket, args);
                 }
