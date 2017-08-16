@@ -91,9 +91,16 @@ namespace CnDream.Core
             }
         }
 
-        public Task HandleChannelReceivedDataAsync( byte[] buffer, int offset, int count )
+        public Socket FindEndPoint( int pairId )
         {
-            throw new NotImplementedException();
+            if ( EndPointSockets.TryGetValue(pairId, out var endpoint) )
+            {
+                return endpoint.socket;
+            }
+            else
+            {
+                return null;
+            }
         }
 
         class PairInfo

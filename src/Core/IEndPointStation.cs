@@ -12,6 +12,6 @@ namespace CnDream.Core
         void AddEndPoint( int pairId, Socket endpointSocket );
         void RemoveEndPoint( int pairId );
 
-        Task HandleChannelReceivedDataAsync( byte[] buffer, int offset, int count );
+        Socket FindEndPoint( int pairId );
     }
 }

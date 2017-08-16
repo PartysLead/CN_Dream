@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
@@ -13,6 +14,8 @@ namespace CnDream.Core
     {
         IEndPointStation EndPointStation;
         IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        IDataPacker DataPacker;
+        IDataUnpacker DataUnpacker;
 
         int ChannelIdSeed = 0;
         ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> Channels
@@ -20,10 +23,12 @@ namespace CnDream.Core
         ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
-        public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
+        public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool, IDataPacker dataPacker, IDataUnpacker dataUnpacker )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
+            DataPacker = dataPacker;
+            DataUnpacker = dataUnpacker;
         }
 
         public bool TryAddChannel( Socket channelSocket, out int channelId )
@@ -62,7 +67,14 @@ namespace CnDream.Core
             {
                 if ( e.BytesTransferred > 0 )
                 {
-                    await EndPointStation.HandleChannelReceivedDataAsync(e.Buffer, e.Offset, e.BytesTransferred);
+                    ISocketSender ss = null; // TODO: buffer pool it
+
+                    ArraySegment<byte> output;// TODO: buffer pool it
+                    var pairId = DataUnpacker.UnpackData(output, e.Buffer, e.Offset, e.BytesTransferred);
+
+                    ss.SetBuffer(output);
+                    ss.SetSocket(EndPointStation.FindEndPoint(pairId));
+                    await ss.SendDataAsync();
 
                     BeginReceive(socket, e);
                 }
@@ -130,7 +142,14 @@ namespace CnDream.Core
                 return;
             }
 
-            
+            ISocketSender ss = null; // TODO: buffer pool it
+
+            ArraySegment<byte> output;// TODO: buffer pool it
+            DataPacker.PackData(output, pairId, wasPaired, buffer, offset, count);
+
+            ss.SetBuffer(output);
+            ss.SetSocket(channel.socket);
+            await ss.SendDataAsync();
         }
     }
 }
