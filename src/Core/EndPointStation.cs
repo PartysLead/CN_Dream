@@ -43,18 +43,18 @@ namespace CnDream.Core
             }
         }
 
-        private async void OnEndPointSocketReceived( object sender, SocketAsyncEventArgs args )
+        private async void OnEndPointSocketReceived( object sender, SocketAsyncEventArgs e )
         {
             var endpointSocket = (Socket)sender;
-            var pairId = ((PairInfo)args.UserToken).PairId;
-            if ( args.SocketError == SocketError.Success )
+            var pairId = ((PairInfo)e.UserToken).PairId;
+            if ( e.SocketError == SocketError.Success )
             {
-                if ( args.BytesTransferred > 0 )
+                if ( e.BytesTransferred > 0 )
                 {
                     // TODO: Error handling??
-                    await ChannelStation.HandleEndPointReceivedDataAsync(pairId, args.Buffer, args.Offset, args.BytesTransferred);
+                    await ChannelStation.HandleEndPointReceivedDataAsync(pairId, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
-                    BeginReceive(endpointSocket, args);
+                    BeginReceive(endpointSocket, e);
                 }
             }
             else

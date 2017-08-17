@@ -70,9 +70,9 @@ namespace CnDream.Core
                     ISocketSender ss = null; // TODO: buffer pool it
 
                     ArraySegment<byte> output;// TODO: buffer pool it
-                    var pairId = DataUnpacker.UnpackData(output, e.Buffer, e.Offset, e.BytesTransferred);
+                    var (pairId, bytesWritten) = DataUnpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
-                    ss.SetBuffer(output);
+                    ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
                     ss.SetSocket(EndPointStation.FindEndPoint(pairId));
                     await ss.SendDataAsync();
 
@@ -108,7 +108,7 @@ namespace CnDream.Core
             return result;
         }
 
-        public async Task HandleEndPointReceivedDataAsync( int pairId, byte[] buffer, int offset, int count )
+        public async Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer )
         {
             var wasPaired = PairedChannels.TryGetValue(pairId, out var channelId);
             if ( !wasPaired )
@@ -138,16 +138,16 @@ namespace CnDream.Core
 
                 PairedChannels.TryRemove(channelId, out _);
 
-                await HandleEndPointReceivedDataAsync(pairId, buffer, offset, count);
+                await HandleEndPointReceivedDataAsync(pairId, buffer);
                 return;
             }
 
             ISocketSender ss = null; // TODO: buffer pool it
 
             ArraySegment<byte> output;// TODO: buffer pool it
-            DataPacker.PackData(output, pairId, wasPaired, buffer, offset, count);
+            var bytesWritten = DataPacker.PackData(output, pairId, wasPaired, buffer);
 
-            ss.SetBuffer(output);
+            ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
             ss.SetSocket(channel.socket);
             await ss.SendDataAsync();
         }

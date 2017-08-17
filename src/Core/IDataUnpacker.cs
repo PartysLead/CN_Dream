@@ -4,6 +4,6 @@ namespace CnDream.Core
 {
     public interface IDataUnpacker
     {
-        int UnpackData( ArraySegment<byte> output, byte[] buffer, int offset, int count );
+        (int pairId, int bytesWritten) UnpackData( ArraySegment<byte> output, ArraySegment<byte> input );
     }
 }
