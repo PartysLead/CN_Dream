@@ -14,33 +14,29 @@ namespace CnDream.Core
     {
         IEndPointStation EndPointStation;
         ISocketAsyncEventArgsPool ReceiveEventArgsPool;
-        IDataPacker DataPacker;
-        IDataUnpacker DataUnpacker;
 
         int ChannelIdSeed = 0;
-        ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs)> Channels
-            = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs)>();
+        ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> Channels
+            = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs, IDataPacker)>();
         ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
-        public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IDataPacker dataPacker, IDataUnpacker dataUnpacker )
+        public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
-            DataPacker = dataPacker;
-            DataUnpacker = dataUnpacker;
         }
 
-        public bool TryAddChannel( Socket channelSocket, out int channelId )
+        public bool TryAddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker, out int channelId )
         {
             channelId = Interlocked.Increment(ref ChannelIdSeed);
 
-            var recvArgs = AcquireRecvArgs();
+            var recvArgs = AcquireRecvArgs(dataUnpacker);
 
-            if ( Channels.TryAdd(channelId, (channelSocket, recvArgs)) )
+            if ( Channels.TryAdd(channelId, (socket, recvArgs, dataPacker)) )
             {
                 FreeChannels.Add(channelId);
-                BeginReceive(channelSocket, recvArgs);
+                BeginReceive(socket, recvArgs);
 
                 return true;
             }
@@ -67,11 +63,12 @@ namespace CnDream.Core
             {
                 if ( e.BytesTransferred > 0 )
                 {
-                    ISocketSender ss = null; // TODO: buffer pool it
+                    var unpacker = (IDataUnpacker)e.UserToken;
 
                     ArraySegment<byte> output;// TODO: buffer pool it
-                    var (pairId, bytesWritten) = DataUnpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
+                    var (pairId, bytesWritten) = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
+                    ISocketSender ss = null; // TODO: buffer pool it
                     ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
                     ss.SetSocket(EndPointStation.FindEndPoint(pairId));
                     await ss.SendDataAsync();
@@ -82,27 +79,38 @@ namespace CnDream.Core
             // TODO: Error handling??
         }
 
-        private SocketAsyncEventArgs AcquireRecvArgs()
+        private SocketAsyncEventArgs AcquireRecvArgs( IDataUnpacker dataUnpacker )
         {
             var recvArgs = ReceiveEventArgsPool.AcquireWithBuffer();
             recvArgs.Completed += OnChannelSocketReceived;
+            recvArgs.UserToken = dataUnpacker;
+
             return recvArgs;
         }
 
-        private void ReleaseRecvArgs( SocketAsyncEventArgs recvArgs )
+        private IDataUnpacker ReleaseRecvArgs( SocketAsyncEventArgs recvArgs )
         {
             recvArgs.Completed -= OnChannelSocketReceived;
+
+            var dataUnpacker = (IDataUnpacker)recvArgs.UserToken;
+            recvArgs.UserToken = null;
+
             ReceiveEventArgsPool.ReleaseWithBuffer(recvArgs);
+
+            return dataUnpacker;
         }
 
-        public bool TryRemoveChannel( int channelId, out Socket socket )
+        public bool TryRemoveChannel( int channelId, out Socket socket, out IDataPacker dataPacker, out IDataUnpacker dataUnpacker )
         {
             var result = Channels.TryRemove(channelId, out var channel);
+
             socket = channel.socket;
+            dataPacker = channel.dataPacker;
+            dataUnpacker = null;
 
             if ( result )
             {
-                ReleaseRecvArgs(channel.recvArgs);
+                dataUnpacker = ReleaseRecvArgs(channel.recvArgs);
             }
 
             return result;
@@ -145,7 +153,7 @@ namespace CnDream.Core
             ISocketSender ss = null; // TODO: buffer pool it
 
             ArraySegment<byte> output;// TODO: buffer pool it
-            var bytesWritten = DataPacker.PackData(output, pairId, wasPaired, buffer);
+            var bytesWritten = channel.dataPacker.PackData(output, pairId, wasPaired, buffer);
 
             ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
             ss.SetSocket(channel.socket);
