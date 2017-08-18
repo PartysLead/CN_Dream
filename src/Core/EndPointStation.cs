@@ -9,12 +9,12 @@ namespace CnDream.Core
     public class EndPointStation : IEndPointStation
     {
         IChannelStation ChannelStation;
-        IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        ISocketAsyncEventArgsPool ReceiveEventArgsPool;
 
-        readonly ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> EndPointSockets
-            = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
+        readonly ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs)> EndPointSockets
+            = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs)>();
 
-        public void Initialize( IChannelStation channelStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool )
+        public void Initialize( IChannelStation channelStation, ISocketAsyncEventArgsPool recvArgsPool )
         {
             ChannelStation = channelStation;
             ReceiveEventArgsPool = recvArgsPool;
@@ -63,9 +63,9 @@ namespace CnDream.Core
             }
         }
 
-        private (Socket, BufferedSocketAsyncEventArgs recvArgs) AcquireEndPointResources( int pairId, Socket endpointSocket )
+        private (Socket, SocketAsyncEventArgs recvArgs) AcquireEndPointResources( int pairId, Socket endpointSocket )
         {
-            var recvArgs = ReceiveEventArgsPool.Acquire();
+            var recvArgs = ReceiveEventArgsPool.AcquireWithBuffer();
 
             recvArgs.Completed += OnEndPointSocketReceived;
             recvArgs.UserToken = new PairInfo { PairId = pairId };
@@ -73,14 +73,14 @@ namespace CnDream.Core
             return (endpointSocket, recvArgs);
         }
 
-        private void ReleaseEndPointResources( (Socket, BufferedSocketAsyncEventArgs recvArgs) endpoint )
+        private void ReleaseEndPointResources( (Socket, SocketAsyncEventArgs recvArgs) endpoint )
         {
             var recvArgs = endpoint.recvArgs;
 
             recvArgs.Completed -= OnEndPointSocketReceived;
             recvArgs.UserToken = null;
 
-            ReceiveEventArgsPool.Release(recvArgs);
+            ReceiveEventArgsPool.ReleaseWithBuffer(recvArgs);
         }
 
         public void RemoveEndPoint( int pairId )

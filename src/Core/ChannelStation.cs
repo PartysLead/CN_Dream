@@ -13,17 +13,17 @@ namespace CnDream.Core
     public class ChannelStation : IChannelStation
     {
         IEndPointStation EndPointStation;
-        IPool<BufferedSocketAsyncEventArgs> ReceiveEventArgsPool;
+        ISocketAsyncEventArgsPool ReceiveEventArgsPool;
         IDataPacker DataPacker;
         IDataUnpacker DataUnpacker;
 
         int ChannelIdSeed = 0;
-        ConcurrentDictionary<int, (Socket socket, BufferedSocketAsyncEventArgs recvArgs)> Channels
-            = new ConcurrentDictionary<int, (Socket, BufferedSocketAsyncEventArgs)>();
+        ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs)> Channels
+            = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs)>();
         ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
-        public void Initialize( IEndPointStation endpointStation, IPool<BufferedSocketAsyncEventArgs> recvArgsPool, IDataPacker dataPacker, IDataUnpacker dataUnpacker )
+        public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IDataPacker dataPacker, IDataUnpacker dataUnpacker )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
@@ -82,17 +82,17 @@ namespace CnDream.Core
             // TODO: Error handling??
         }
 
-        private BufferedSocketAsyncEventArgs AcquireRecvArgs()
+        private SocketAsyncEventArgs AcquireRecvArgs()
         {
-            var recvArgs = ReceiveEventArgsPool.Acquire();
+            var recvArgs = ReceiveEventArgsPool.AcquireWithBuffer();
             recvArgs.Completed += OnChannelSocketReceived;
             return recvArgs;
         }
 
-        private void ReleaseRecvArgs( BufferedSocketAsyncEventArgs recvArgs )
+        private void ReleaseRecvArgs( SocketAsyncEventArgs recvArgs )
         {
             recvArgs.Completed -= OnChannelSocketReceived;
-            ReceiveEventArgsPool.Release(recvArgs);
+            ReceiveEventArgsPool.ReleaseWithBuffer(recvArgs);
         }
 
         public bool TryRemoveChannel( int channelId, out Socket socket )
