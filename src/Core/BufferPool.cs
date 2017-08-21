@@ -13,12 +13,12 @@ namespace CnDream.Core
         int ActiveCapacity;
         byte[] ActiveChunk;
 
-        public BufferPool( int perAcquireSizeInKB, int initChunkCapacity, int capacityGrowDelta )
+        public BufferPool( int perAcquireSizeInKB, int initialChunkCapacity, int capacityGrowDelta )
         {
             PerAcquireSize = perAcquireSizeInKB * 1024;
             CapacityGrowDelta = capacityGrowDelta;
-            ActiveCapacity = initChunkCapacity;
-            TryInitialize(initChunkCapacity);
+            ActiveCapacity = initialChunkCapacity;
+            TryInitialize(initialChunkCapacity);
         }
 
         private bool TryInitialize( int capacity )
