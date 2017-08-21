@@ -1,21 +1,27 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Collections.Concurrent;
 
 namespace CnDream.Core
 {
     public abstract class Pool<T> : IPool<T>
     {
-        protected T[] FreeObjects;
+        protected ConcurrentBag<T> FreeObjects;
 
         public virtual T Acquire()
         {
-            throw new NotImplementedException();
+            if ( FreeObjects.TryTake(out var result) || CreateObject(out result) )
+            {
+                return result;
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
         }
 
         public virtual void Release( T t )
         {
-            throw new NotImplementedException();
+            FreeObjects.Add(t);
         }
 
         protected abstract bool CreateObject( out T obj );
