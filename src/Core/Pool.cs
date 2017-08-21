@@ -5,7 +5,7 @@ namespace CnDream.Core
 {
     public abstract class Pool<T> : IPool<T>
     {
-        protected ConcurrentBag<T> FreeObjects;
+        protected ConcurrentBag<T> FreeObjects = new ConcurrentBag<T>();
 
         public virtual T Acquire()
         {
