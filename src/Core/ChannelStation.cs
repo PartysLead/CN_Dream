@@ -66,12 +66,18 @@ namespace CnDream.Core
                     var unpacker = (IDataUnpacker)e.UserToken;
 
                     ArraySegment<byte> output;// TODO: buffer pool it
-                    var (pairId, bytesWritten) = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
+                    var unpackedData = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
-                    ISocketSender ss = null; // TODO: buffer pool it
-                    ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
-                    ss.SetSocket(EndPointStation.FindEndPoint(pairId));
-                    await ss.SendDataAsync();
+                    for ( int i = 0; i < unpackedData.Length; i++ )
+                    {
+                        var (pairId, bytes) = unpackedData[i];
+
+                        ISocketSender ss = null; // TODO: buffer pool it
+                        ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytes));
+                        ss.SetSocket(EndPointStation.FindEndPoint(pairId));
+
+                        await ss.SendDataAsync();
+                    }
 
                     BeginReceive(socket, e);
                 }
