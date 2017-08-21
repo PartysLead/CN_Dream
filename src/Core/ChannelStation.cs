@@ -68,15 +68,16 @@ namespace CnDream.Core
                     ArraySegment<byte> output;// TODO: buffer pool it
                     var unpackedData = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
-                    for ( int i = 0; i < unpackedData.Length; i++ )
+                    for ( int i = 0, offset = output.Offset; i < unpackedData.Length; i++ )
                     {
                         var (pairId, bytes) = unpackedData[i];
+                        var sendBuffer = new ArraySegment<byte>(output.Array, offset, bytes);
+                        var endpointSocket = EndPointStation.FindEndPoint(pairId);
 
                         ISocketSender ss = null; // TODO: buffer pool it
-                        ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytes));
-                        ss.SetSocket(EndPointStation.FindEndPoint(pairId));
+                        await ss.SendDataAsync(endpointSocket, sendBuffer);
 
-                        await ss.SendDataAsync();
+                        offset += bytes;
                     }
 
                     BeginReceive(socket, e);
@@ -160,10 +161,8 @@ namespace CnDream.Core
 
             ArraySegment<byte> output;// TODO: buffer pool it
             var bytesWritten = channel.dataPacker.PackData(output, pairId, wasPaired, buffer);
-
-            ss.SetBuffer(new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
-            ss.SetSocket(channel.socket);
-            await ss.SendDataAsync();
+            
+            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
         }
     }
 }
