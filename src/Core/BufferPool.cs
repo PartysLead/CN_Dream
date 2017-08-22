@@ -17,11 +17,10 @@ namespace CnDream.Core
         {
             PerAcquireSize = perAcquireSizeInKB * 1024;
             CapacityGrowDelta = capacityGrowDelta;
-            ActiveCapacity = initialChunkCapacity;
-            TryInitialize(initialChunkCapacity);
+            Initialize(initialChunkCapacity);
         }
 
-        private bool TryInitialize( int capacity )
+        private void Initialize( int capacity )
         {
             lock ( this ) // serialize multiple calls
             {
@@ -32,12 +31,9 @@ namespace CnDream.Core
 
                     ActiveChunk = newChunk;
                     FreeObjects = new ConcurrentBag<ArraySegment<byte>>(newBuffers);
-
-                    return true;
+                    ActiveCapacity = capacity;
                 }
             }
-
-            return false;
         }
 
         private IEnumerable<ArraySegment<byte>> GenerateArraySegments( byte[] newChunk, int capacity )
@@ -55,10 +51,8 @@ namespace CnDream.Core
         protected override bool CreateObject( out ArraySegment<byte> obj )
         {
             var newCap = ActiveCapacity + CapacityGrowDelta; // We don't want the number grow for each thread
-            if ( TryInitialize(newCap) )
-            {
-                Interlocked.Exchange(ref ActiveCapacity, newCap);
-            }
+
+            Initialize(newCap);
 
             obj = Acquire();
             return true;
