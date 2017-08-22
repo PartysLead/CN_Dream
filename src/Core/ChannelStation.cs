@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,7 +19,7 @@ namespace CnDream.Core
         int ChannelIdSeed = 0;
         ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> Channels
             = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs, IDataPacker)>();
-        ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
+        ConcurrentDictionary<int, EndpointActivityInfo> EndpointActivities = new ConcurrentDictionary<int, EndpointActivityInfo>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
         public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IPool<ArraySegment<byte>> dataBufferPool, IPool<ISocketSender> socketSenderPool )
@@ -70,6 +69,7 @@ namespace CnDream.Core
                     var unpacker = (IDataUnpacker)e.UserToken;
 
                     var output = DataBufferPool.Acquire();
+
                     var unpackedData = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
                     for ( int i = 0, offset = output.Offset; i < unpackedData.Length; i++ )
@@ -132,47 +132,56 @@ namespace CnDream.Core
 
         public async Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer )
         {
-            var wasPaired = PairedChannels.TryGetValue(pairId, out var channelId);
-            if ( !wasPaired )
+            var hasActivityInfo = EndpointActivities.TryGetValue(pairId, out var activityInfo);
+            while ( !hasActivityInfo )
             {
-                var nowPaired = false;
-                do
+                if ( FreeChannels.TryTake(out var freeChannelId) )
                 {
-                    if ( FreeChannels.TryTake(out var freeChannelId) )
+                    if ( Channels.ContainsKey(freeChannelId) )
                     {
-                        if ( Channels.ContainsKey(freeChannelId) )
-                        {
-                            channelId = freeChannelId;
-                            nowPaired = PairedChannels.TryAdd(pairId, channelId);
-                        }
-                    }
-                    else
-                    {
-                        // TODO: No free channels left! Need handle this depend on whether we're remote or local.
+                        activityInfo = new EndpointActivityInfo { ChannelId = freeChannelId };
+                        hasActivityInfo = EndpointActivities.TryAdd(pairId, activityInfo);
                     }
                 }
-                while ( !nowPaired );
+                else
+                {
+                    // TODO: No free channels left! Need handle this depend on whether we're remote or local.
+                }
             }
 
-            if ( !Channels.TryGetValue(channelId, out var channel) )
+            if ( !Channels.TryGetValue(activityInfo.ChannelId, out var channel) )
             {
-                // Channel just got removed right after we choose it for pair, need to find another.
+                // Channel just got removed right after we chose it, need to find another.
 
-                PairedChannels.TryRemove(channelId, out _);
+                EndpointActivities.TryRemove(pairId, out _);
 
                 await HandleEndPointReceivedDataAsync(pairId, buffer);
                 return;
             }
 
             var ss = SocketSenderPool.Acquire();
-
             var output = DataBufferPool.Acquire();
-            var bytesWritten = channel.dataPacker.PackData(output, pairId, wasPaired, buffer);
-            
-            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+
+            int? recvId = Interlocked.Increment(ref activityInfo.ReceiveId);
+            int bytes;
+            while ( !channel.dataPacker.PackData(output, out bytes, pairId, recvId, buffer) )
+            {
+                await ss.SendDataAsync(channel.socket, output);
+
+                buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytes, buffer.Count - bytes);
+                recvId = null;
+            }
+            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytes));
+
 
             DataBufferPool.Release(output);
             SocketSenderPool.Release(ss);
+        }
+
+        class EndpointActivityInfo
+        {
+            public int ChannelId;
+            public int ReceiveId;
         }
     }
 }
