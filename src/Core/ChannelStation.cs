@@ -164,7 +164,7 @@ namespace CnDream.Core
                 return;
             }
 
-            var ss = SocketSenderPool.Acquire(); // TODO: buffer pool it
+            var ss = SocketSenderPool.Acquire();
 
             var output = DataBufferPool.Acquire();
             var bytesWritten = channel.dataPacker.PackData(output, pairId, wasPaired, buffer);
