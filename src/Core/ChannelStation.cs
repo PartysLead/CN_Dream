@@ -14,6 +14,7 @@ namespace CnDream.Core
     {
         IEndPointStation EndPointStation;
         ISocketAsyncEventArgsPool ReceiveEventArgsPool;
+        IPool<ArraySegment<byte>> DataBufferPool;
 
         int ChannelIdSeed = 0;
         ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> Channels
@@ -21,10 +22,11 @@ namespace CnDream.Core
         ConcurrentDictionary<int, int> PairedChannels = new ConcurrentDictionary<int, int>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
-        public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool )
+        public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IPool<ArraySegment<byte>> dataBufferPool )
         {
             EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
+            DataBufferPool = dataBufferPool;
         }
 
         public bool TryAddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker, out int channelId )
@@ -65,7 +67,7 @@ namespace CnDream.Core
                 {
                     var unpacker = (IDataUnpacker)e.UserToken;
 
-                    ArraySegment<byte> output;// TODO: buffer pool it
+                    var output = DataBufferPool.Acquire();
                     var unpackedData = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
 
                     for ( int i = 0, offset = output.Offset; i < unpackedData.Length; i++ )
@@ -79,6 +81,8 @@ namespace CnDream.Core
 
                         offset += bytes;
                     }
+
+                    DataBufferPool.Release(output);
 
                     BeginReceive(socket, e);
                 }
@@ -159,10 +163,12 @@ namespace CnDream.Core
 
             ISocketSender ss = null; // TODO: buffer pool it
 
-            ArraySegment<byte> output;// TODO: buffer pool it
+            var output = DataBufferPool.Acquire();
             var bytesWritten = channel.dataPacker.PackData(output, pairId, wasPaired, buffer);
             
             await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+
+            DataBufferPool.Release(output);
         }
     }
 }
