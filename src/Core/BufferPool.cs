@@ -28,8 +28,10 @@ namespace CnDream.Core
                 if ( FreeObjects.IsEmpty )
                 {
                     var newChunk = new byte[PerAcquireSize * capacity];
-                    FreeObjects = new ConcurrentBag<ArraySegment<byte>>(GenerateArraySegments(newChunk, capacity));
+                    var newBuffers = GenerateArraySegments(newChunk, capacity);
+
                     ActiveChunk = newChunk;
+                    FreeObjects = new ConcurrentBag<ArraySegment<byte>>(newBuffers);
 
                     return true;
                 }
