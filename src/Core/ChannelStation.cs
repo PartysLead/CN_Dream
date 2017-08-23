@@ -19,7 +19,7 @@ namespace CnDream.Core
         int ChannelIdSeed = 0;
         ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> Channels
             = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs, IDataPacker)>();
-        ConcurrentDictionary<int, EndpointActivityInfo> EndpointActivities = new ConcurrentDictionary<int, EndpointActivityInfo>();
+        ConcurrentDictionary<int, EndpointState> EndpointStates = new ConcurrentDictionary<int, EndpointState>();
         ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
         public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IPool<ArraySegment<byte>> dataBufferPool, IPool<ISocketSender> socketSenderPool )
@@ -70,19 +70,20 @@ namespace CnDream.Core
 
                     var output = DataBufferPool.Acquire();
 
-                    var unpackedData = unpacker.UnpackData(output, new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred));
-
-                    for ( int i = 0, offset = output.Offset; i < unpackedData.Length; i++ )
+                    var input = new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred);
+                    while ( unpacker.UnpackData(output, out var bytesWritten, out var bytesRead, out var pairId, out var serialId, input) )
                     {
-                        var (pairId, bytes) = unpackedData[i];
-                        var sendBuffer = new ArraySegment<byte>(output.Array, offset, bytes);
-                        var endpointSocket = EndPointStation.FindEndPoint(pairId);
+                        var sendBuffer = new ArraySegment<byte>(output.Array, output.Offset, bytesWritten);
+                        var endpointSocket = EndPointStation.FindEndPoint(pairId.Value);
 
                         var ss = SocketSenderPool.Acquire();
+
+                        // TODO: use serialId
                         await ss.SendDataAsync(endpointSocket, sendBuffer);
+
                         SocketSenderPool.Release(ss);
 
-                        offset += bytes;
+                        input = new ArraySegment<byte>(input.Array, input.Offset + bytesRead, input.Count - bytesRead);
                     }
 
                     DataBufferPool.Release(output);
@@ -132,15 +133,15 @@ namespace CnDream.Core
 
         public async Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer )
         {
-            var hasActivityInfo = EndpointActivities.TryGetValue(pairId, out var activityInfo);
+            var hasActivityInfo = EndpointStates.TryGetValue(pairId, out var activityInfo);
             while ( !hasActivityInfo )
             {
                 if ( FreeChannels.TryTake(out var freeChannelId) )
                 {
                     if ( Channels.ContainsKey(freeChannelId) )
                     {
-                        activityInfo = new EndpointActivityInfo { ChannelId = freeChannelId };
-                        hasActivityInfo = EndpointActivities.TryAdd(pairId, activityInfo);
+                        activityInfo = new EndpointState { ChannelId = freeChannelId };
+                        hasActivityInfo = EndpointStates.TryAdd(pairId, activityInfo);
                     }
                 }
                 else
@@ -153,7 +154,7 @@ namespace CnDream.Core
             {
                 // Channel just got removed right after we chose it, need to find another.
 
-                EndpointActivities.TryRemove(pairId, out _);
+                EndpointStates.TryRemove(pairId, out _);
 
                 await HandleEndPointReceivedDataAsync(pairId, buffer);
                 return;
@@ -162,14 +163,14 @@ namespace CnDream.Core
             var ss = SocketSenderPool.Acquire();
             var output = DataBufferPool.Acquire();
 
-            int? recvId = Interlocked.Increment(ref activityInfo.ReceiveId);
+            int? serialId = Interlocked.Increment(ref activityInfo.SerialId);
             int bytes;
-            while ( !channel.dataPacker.PackData(output, out bytes, pairId, recvId, buffer) )
+            while ( !channel.dataPacker.PackData(output, out bytes, pairId, serialId, buffer) )
             {
                 await ss.SendDataAsync(channel.socket, output);
 
                 buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytes, buffer.Count - bytes);
-                recvId = null;
+                serialId = null;
             }
             await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytes));
 
@@ -178,10 +179,10 @@ namespace CnDream.Core
             SocketSenderPool.Release(ss);
         }
 
-        class EndpointActivityInfo
+        class EndpointState
         {
             public int ChannelId;
-            public int ReceiveId;
+            public int SerialId;
         }
     }
 }
