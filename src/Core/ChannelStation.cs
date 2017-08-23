@@ -75,13 +75,13 @@ namespace CnDream.Core
                     {
                         var pairId = description.pairId.Value;
                         var serialId = description.serialId.Value;
-                        var totalLength = description.totalLength.Value;
+                        var payloadSize = description.payloadSize.Value;
                         var bytesRead = description.bytesRead;
 
                         var unpackedData = new ArraySegment<byte>(output.Array, output.Offset, description.bytesWritten);
                         var endpointSocket = EndPointStation.FindEndPoint(pairId);
 
-                        await EndpointStates[pairId].BufferAndSendAvailableContentsAsync(endpointSocket, serialId, totalLength, unpackedData);
+                        await EndpointStates[pairId].BufferAndSendAvailableContentsAsync(endpointSocket, serialId, payloadSize, unpackedData);
 
                         if ( bytesRead == input.Count )
                         {
@@ -175,33 +175,76 @@ namespace CnDream.Core
         {
             public int PackingSerialId;
 
-            int UnpackingSerialId = 1;
-            int UnpackingBytesLeft;
-            ConcurrentDictionary<int, (ArraySegment<byte> buffer, int bytesWritten)> UnpackedDataBuffers = new ConcurrentDictionary<int, (ArraySegment<byte>, int)>();
+            volatile int UnpackingSerialId = 1;
+            ConcurrentDictionary<int, EndpointSendBufferState> UnpackedDataBuffers = new ConcurrentDictionary<int, EndpointSendBufferState>();
 
-            public async Task BufferAndSendAvailableContentsAsync( Socket socket, int serialId, int totalLength, ArraySegment<byte> data )
+            public async Task BufferAndSendAvailableContentsAsync( Socket endpointSocket, int serialId, int payloadSize, ArraySegment<byte> data )
             {
+                // for the same serialId, this function is called serializely
+                var currentSerialId = UnpackingSerialId;
+
                 ISocketSender sender = null;
 
-                if ( serialId == UnpackingSerialId )
+                if ( serialId == currentSerialId )
                 {
-                    var bytesLeft = UnpackingBytesLeft;
-                    if ( bytesLeft == 0 )
+                    var bytesSent = 0;
+                    if ( UnpackedDataBuffers.TryGetValue(serialId, out var sendBufferState) )
                     {
-                        bytesLeft = totalLength;
+                        bytesSent = sendBufferState.BytesSent;
+                        var bytesInBuffer = sendBufferState.BytesInBuffer;
+                        if ( bytesInBuffer > 0 )
+                        {
+                            var sendbuffer = sendBufferState.Buffer;
+
+                            await sender.SendDataAsync(endpointSocket, new ArraySegment<byte>(sendbuffer.Array, sendbuffer.Offset, bytesInBuffer));
+                            bytesSent += bytesInBuffer;
+
+                            sendBufferState.BytesInBuffer = 0;
+                        }
                     }
 
-                    await sender.SendDataAsync(socket, data);
+                    await sender.SendDataAsync(endpointSocket, data);
+                    bytesSent += data.Count;
 
-                    bytesLeft -= data.Count;
-                    Interlocked.Exchange(ref UnpackingBytesLeft, bytesLeft);
-
-                    if ( bytesLeft == 0 )
+                    if ( bytesSent < payloadSize )
                     {
-                        var nextSerialId = Interlocked.Increment(ref UnpackingSerialId);
+                        sendBufferState.BytesSent = bytesSent;
+                        return;
                     }
+
+                    UnpackedDataBuffers.TryRemove(currentSerialId, out _);
+
+                    while ( UnpackedDataBuffers.TryGetValue(++currentSerialId, out sendBufferState) )
+                    {
+                        var nextPayloadSize = sendBufferState.PayloadSize;
+                        var bytesInBuffer = sendBufferState.BytesInBuffer;
+                        if ( bytesInBuffer == nextPayloadSize )
+                        {
+                            var sendbuffer = sendBufferState.Buffer;
+                            await sender.SendDataAsync(endpointSocket, new ArraySegment<byte>(sendbuffer.Array, sendbuffer.Offset, bytesInBuffer));
+
+                            UnpackedDataBuffers.TryRemove(currentSerialId, out _);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    UnpackingSerialId = currentSerialId;
                 }
+                else
+                {
+                    Debug.Assert(serialId > currentSerialId);
+                }
+            }
 
+            class EndpointSendBufferState
+            {
+                public ArraySegment<byte> Buffer;
+                public int PayloadSize;
+                public volatile int BytesSent;
+                public volatile int BytesInBuffer;
             }
         }
     }
