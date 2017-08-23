@@ -7,6 +7,11 @@ namespace CnDream.Core
         /// <remarks>
         /// When this returns false, bytesWritten = 0, bytesRead = input.Count
         /// </remarks>
-        bool UnpackData( ArraySegment<byte> output, out int bytesWritten, out int bytesRead, out int? pairId, out int? serialId, ArraySegment<byte> input );
+        bool UnpackData
+        (
+            ArraySegment<byte> output,
+            out (int bytesWritten, int bytesRead, int? pairId, int? serialId, int? totalLength) description,
+            ArraySegment<byte> input
+        );
     }
 }

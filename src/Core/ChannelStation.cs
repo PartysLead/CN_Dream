@@ -71,17 +71,22 @@ namespace CnDream.Core
                     var output = DataBufferPool.Acquire();
 
                     var input = new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred);
-                    while ( unpacker.UnpackData(output, out var bytesWritten, out var bytesRead, out var pairId, out var serialId, input) )
+                    while ( unpacker.UnpackData(output, out var description, input) )
                     {
-                        var sendBuffer = new ArraySegment<byte>(output.Array, output.Offset, bytesWritten);
-                        var endpointSocket = EndPointStation.FindEndPoint(pairId.Value);
+                        var pairId = description.pairId.Value;
+                        var serialId = description.serialId.Value;
+                        var totalLength = description.totalLength.Value;
+                        var bytesRead = description.bytesRead;
 
-                        var ss = SocketSenderPool.Acquire();
+                        var unpackedData = new ArraySegment<byte>(output.Array, output.Offset, description.bytesWritten);
+                        var endpointSocket = EndPointStation.FindEndPoint(pairId);
 
-                        // TODO: use serialId
-                        await ss.SendDataAsync(endpointSocket, sendBuffer);
+                        await EndpointStates[pairId].BufferAndSendAvailableContentsAsync(endpointSocket, serialId, totalLength, unpackedData);
 
-                        SocketSenderPool.Release(ss);
+                        if ( bytesRead == input.Count )
+                        {
+                            break;
+                        }
 
                         input = new ArraySegment<byte>(input.Array, input.Offset + bytesRead, input.Count - bytesRead);
                     }
@@ -133,29 +138,16 @@ namespace CnDream.Core
 
         public async Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer )
         {
-            var hasActivityInfo = EndpointStates.TryGetValue(pairId, out var activityInfo);
-            while ( !hasActivityInfo )
+            var endpointState = EndpointStates.GetOrAdd(pairId, _ => new EndpointState());
+
+            if ( !FreeChannels.TryTake(out var freeChannelId) )
             {
-                if ( FreeChannels.TryTake(out var freeChannelId) )
-                {
-                    if ( Channels.ContainsKey(freeChannelId) )
-                    {
-                        activityInfo = new EndpointState { ChannelId = freeChannelId };
-                        hasActivityInfo = EndpointStates.TryAdd(pairId, activityInfo);
-                    }
-                }
-                else
-                {
-                    // TODO: No free channels left! Need handle this depend on whether we're remote or local.
-                }
+                // TODO: No free channels left! Need handle this depend on whether we're remote or local.
             }
 
-            if ( !Channels.TryGetValue(activityInfo.ChannelId, out var channel) )
+            if ( !Channels.TryGetValue(freeChannelId, out var channel) )
             {
-                // Channel just got removed right after we chose it, need to find another.
-
-                EndpointStates.TryRemove(pairId, out _);
-
+                // Channel was removed, but FreeChannels is ConcurrentBag so could not remove a specific item, just find another.
                 await HandleEndPointReceivedDataAsync(pairId, buffer);
                 return;
             }
@@ -163,7 +155,7 @@ namespace CnDream.Core
             var ss = SocketSenderPool.Acquire();
             var output = DataBufferPool.Acquire();
 
-            int? serialId = Interlocked.Increment(ref activityInfo.SerialId);
+            int? serialId = Interlocked.Increment(ref endpointState.PackingSerialId);
             int bytes;
             while ( !channel.dataPacker.PackData(output, out bytes, pairId, serialId, buffer) )
             {
@@ -181,8 +173,36 @@ namespace CnDream.Core
 
         class EndpointState
         {
-            public int ChannelId;
-            public int SerialId;
+            public int PackingSerialId;
+
+            int UnpackingSerialId = 1;
+            int UnpackingBytesLeft;
+            ConcurrentDictionary<int, (ArraySegment<byte> buffer, int bytesWritten)> UnpackedDataBuffers = new ConcurrentDictionary<int, (ArraySegment<byte>, int)>();
+
+            public async Task BufferAndSendAvailableContentsAsync( Socket socket, int serialId, int totalLength, ArraySegment<byte> data )
+            {
+                ISocketSender sender = null;
+
+                if ( serialId == UnpackingSerialId )
+                {
+                    var bytesLeft = UnpackingBytesLeft;
+                    if ( bytesLeft == 0 )
+                    {
+                        bytesLeft = totalLength;
+                    }
+
+                    await sender.SendDataAsync(socket, data);
+
+                    bytesLeft -= data.Count;
+                    Interlocked.Exchange(ref UnpackingBytesLeft, bytesLeft);
+
+                    if ( bytesLeft == 0 )
+                    {
+                        var nextSerialId = Interlocked.Increment(ref UnpackingSerialId);
+                    }
+                }
+
+            }
         }
     }
 }
