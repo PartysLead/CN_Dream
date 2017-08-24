@@ -223,7 +223,7 @@ namespace CnDream.Core
                         BufferPool.Release(sendBufferState.Buffer);
                     }
 
-                    await SendReadyBuffersAsync(endpointSocket, serialId, sender);
+                    await SendNextReadyBuffersAsync(endpointSocket, serialId, sender);
                 }
                 else
                 {
@@ -231,7 +231,7 @@ namespace CnDream.Core
                 }
             }
 
-            private async Task SendReadyBuffersAsync( Socket endpointSocket, int serialId, ISocketSender sender )
+            private async Task SendNextReadyBuffersAsync( Socket endpointSocket, int serialId, ISocketSender sender )
             {
                 while ( true )
                 {
