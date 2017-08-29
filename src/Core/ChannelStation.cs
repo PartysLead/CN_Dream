@@ -158,15 +158,15 @@ namespace CnDream.Core
             var output = DataBufferPool.Acquire();
 
             int? serialId = Interlocked.Increment(ref endpointState.PackingSerialId);
-            int bytes;
-            while ( !channel.dataPacker.PackData(output, out bytes, pairId, serialId, buffer) )
+            int bytesWritten;
+            while ( !channel.dataPacker.PackData(output, out bytesWritten, out var bytesRead, pairId, serialId, buffer) )
             {
-                await ss.SendDataAsync(channel.socket, output);
+                await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
 
-                buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytes, buffer.Count - bytes);
+                buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytesRead, buffer.Count - bytesRead);
                 serialId = null;
             }
-            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytes));
+            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
 
 
             DataBufferPool.Release(output);
