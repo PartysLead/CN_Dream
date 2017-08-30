@@ -9,80 +9,156 @@ namespace CnDream.Core
     public class DataPacker : IDataPacker
     {
         readonly ICryptoTransform Encryptor;
+        readonly ArraySegment<byte> TempBuffer;
 
-        public DataPacker( ICryptoTransform encrytor )
+        public DataPacker( ICryptoTransform encryptor, ArraySegment<byte> tempBuffer )
         {
-            Encryptor = encrytor;
+            if ( !encryptor.CanTransformMultipleBlocks )
+            {
+                throw new NotSupportedException("Encryptor must be able to transform multiple blocks.");
+            }
+
+            if ( tempBuffer.Count != GetTempBufferSize(encryptor) )
+            {
+                throw new ArgumentException("TempBuffer does not has expected size.", nameof(tempBuffer));
+            }
+
+            Encryptor = encryptor;
+            TempBuffer = tempBuffer;
         }
 
         public bool PackData( ArraySegment<byte> output, out int bytesWritten, out int bytesRead, int pairId, int? serialId, ArraySegment<byte> input )
         {
-            Debug.Assert(output.Count > Encryptor.OutputBlockSize);
+            Debug.Assert(output.Count >= 32 && output.Count > Encryptor.OutputBlockSize);
 
-            var outOffset = output.Offset;
+            var inArray = input.Array;
             var bytesToRead = input.Count;
+            var inputBlockSize = Encryptor.InputBlockSize;
 
-            byte[] tempBuffer = null;
-            var tempBufferWritten = 0;
+            var outArray = output.Array;
+            var outStart = output.Offset;
+            var outOffset = output.Offset;
+
+            var tempArray = TempBuffer.Array;
+            var tempStart = TempBuffer.Offset;
+            var tempWritten = 0;
 
             if ( serialId.HasValue ) // the first portion
             {
-                tempBuffer = new byte[Encryptor.InputBlockSize];
+                WritePrologue(tempArray, tempStart, out tempWritten);
+                WriteInt(pairId, tempArray, tempStart, ref tempWritten);
+                WriteInt(serialId.Value, tempArray, tempStart, ref tempWritten);
+                WriteInt(bytesToRead, tempArray, tempStart, ref tempWritten);
 
-                WritePrologue(tempBuffer, out tempBufferWritten);
-                WriteInt(serialId.Value, tempBuffer, ref tempBufferWritten);
-                WriteInt(bytesToRead, tempBuffer, ref tempBufferWritten);
-
-                if ( tempBufferWritten == tempBuffer.Length )
+                if ( tempWritten == TempBuffer.Count )
                 {
-                    outOffset += Encryptor.TransformBlock(tempBuffer, 0, tempBufferWritten, output.Array, outOffset);
+                    outOffset += Encryptor.TransformBlock(tempArray, 0, tempStart + tempWritten, outArray, outOffset);
+                    Debug.Assert(outOffset < output.Offset + output.Count);
+
+                    tempWritten = 0;
+                }
+
+                bytesWritten = outOffset - outStart;
+            }
+
+            bytesRead = 0;
+
+            if ( tempWritten > 0 && tempWritten < TempBuffer.Count )
+            {
+                bytesRead = Math.Min(TempBuffer.Count - tempWritten, bytesToRead);
+
+                Buffer.BlockCopy(inArray, input.Offset, tempArray, tempWritten, bytesRead);
+
+                tempWritten += bytesRead;
+
+                var padding = tempWritten % inputBlockSize;
+                if ( padding > 0 )
+                {
+                    Debug.Assert(bytesRead == bytesToRead);
+
+                    padding = inputBlockSize - padding;
+                    WritePadding(padding, tempArray, tempStart, ref tempWritten);
+                }
+
+                outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
+                Debug.Assert(outOffset < output.Offset + output.Count);
+
+                tempWritten = 0;
+                bytesWritten = outOffset - outStart;
+
+                if ( padding > 0 )
+                {
+                    return true;
                 }
             }
 
-            if ( tempBuffer != null && tempBufferWritten < tempBuffer.Length )
+            Debug.Assert(tempWritten == 0);
+
+            var blocksCanRead = Math.Min((bytesToRead - bytesRead) / inputBlockSize, (output.Count - outOffset) / Encryptor.OutputBlockSize);
+
+            if ( blocksCanRead == 0 )
             {
-                var bytesToCopy = Math.Min(tempBuffer.Length - tempBufferWritten, )
-                Buffer.BlockCopy(input.Array, input.Offset, output.Array, outOffset, );
+                tempWritten = bytesToRead - bytesRead;
+                Buffer.BlockCopy(inArray, input.Offset + bytesRead, tempArray, 0, tempWritten);
+                bytesRead = bytesToRead;
 
-            }
+                WritePadding(inputBlockSize - (tempWritten % inputBlockSize), tempArray, tempStart, ref tempWritten);
 
-            var freeSpace = output.Count - outOffset;
+                outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
+                bytesWritten = outOffset - outStart;
 
-            if ( bytesToRead <= freeSpace )
-            {
-                freeSpace -= Encryptor.TransformBlock(input.Array, input.Offset, input.Count, output.Array, outOffset);
-                bytes = output.Count - freeSpace;
                 return true;
             }
             else
             {
-                bytes = Encryptor.TransformBlock(input.Array, input.Offset, freeSpace, output.Array, outOffset);
-                return false;
+                var bytesCanRead = inputBlockSize * blocksCanRead;
+                outOffset += Encryptor.TransformBlock(inArray, input.Offset + bytesRead, bytesCanRead, outArray, outOffset);
+                bytesRead += bytesCanRead;
+                bytesWritten = outOffset - outStart;
+
+                return bytesRead == bytesToRead;
             }
         }
 
-        private void WritePrologue( byte[] buffer, out int bytesWritten )
+        public static int GetTempBufferSize( ICryptoTransform encryptor )
+        {
+            int size;
+            for ( size = 0; size < 32; size += encryptor.InputBlockSize ) { }
+
+            return size;
+        }
+
+        private static void WritePrologue( byte[] array, int offset, out int bytesWritten )
         {
             var rand = new Random();
-            var length = rand.Next(4, 9);
+            var limit = offset + rand.Next(4, 9);
             const int step = 10;
 
-            for ( int i = 0, v = rand.Next(step); i < length; i++, v += rand.Next(step) )
+            for ( int i = offset, v = rand.Next(step); i < limit; i++, v += rand.Next(step) )
             {
-                buffer[i] = (byte)v;
+                array[i] = (byte)v;
             }
 
-            buffer[length] = (byte)(buffer[length - 1] - rand.Next(step));
+            array[limit] = (byte)(array[limit - 1] - rand.Next(step));
 
-            bytesWritten = length + 1;
+            bytesWritten = limit + 1;
         }
 
-        private void WriteInt( int value, byte[] buffer, ref int bytesWritten )
+        private static void WriteInt( int value, byte[] array, int offset, ref int bytesWritten )
         {
-            buffer[bytesWritten++] = (byte)value;
-            buffer[bytesWritten++] = (byte)(value >> 8);
-            buffer[bytesWritten++] = (byte)(value >> 16);
-            buffer[bytesWritten++] = (byte)(value >> 24);
+            offset += bytesWritten;
+
+            array[offset++] = (byte)value;
+            array[offset++] = (byte)(value >> 8);
+            array[offset++] = (byte)(value >> 16);
+            array[offset++] = (byte)(value >> 24);
+
+            bytesWritten += 4;
+        }
+
+        private static void WritePadding( int padding, byte[] array, int offset, ref int bytesWritten )
+        {
+            throw new NotImplementedException();
         }
     }
 }
