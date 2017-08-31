@@ -31,34 +31,34 @@ namespace CnDream.Core
         {
             var inArray = input.Array;
             var inStart = input.Offset;
-            var bytesToRead = input.Count;
+            var maxBytesToRead = input.Count;
 
             var outArray = output.Array;
             var outStart = output.Offset;
             var outOffset = outStart;
-            var bytesCanWrite = output.Count;
+            var maxBytesCanWrite = output.Count;
 
             var tempArray = TempBuffer.Array;
             var tempStart = TempBuffer.Offset;
-            var bytesCanTemp = TempBuffer.Count;
+            var maxBytesCanTemp = TempBuffer.Count;
             var tempWritten = 0;
 
             var inputBlockSize = Encryptor.InputBlockSize;
             var outputBlockSize = Encryptor.OutputBlockSize;
 
-            Debug.Assert(bytesCanWrite >= 32 && bytesCanWrite > outputBlockSize);
+            Debug.Assert(maxBytesCanWrite >= 32 && maxBytesCanWrite >= outputBlockSize);
 
             if ( serialId.HasValue ) // the first portion
             {
                 WritePrologue(tempArray, tempStart, out tempWritten);
                 WriteInt(pairId, tempArray, tempStart, ref tempWritten);
                 WriteInt(serialId.Value, tempArray, tempStart, ref tempWritten);
-                WriteInt(bytesToRead, tempArray, tempStart, ref tempWritten);
+                WriteInt(maxBytesToRead, tempArray, tempStart, ref tempWritten);
 
-                if ( tempWritten == bytesCanTemp )
+                if ( tempWritten == maxBytesCanTemp )
                 {
                     outOffset += Encryptor.TransformBlock(tempArray, 0, tempStart + tempWritten, outArray, outOffset);
-                    Debug.Assert(outOffset < outStart + bytesCanWrite);
+                    Debug.Assert(outOffset < outStart + maxBytesCanWrite);
 
                     tempWritten = 0;
                 }
@@ -68,9 +68,9 @@ namespace CnDream.Core
 
             bytesRead = 0;
 
-            if ( tempWritten > 0 && tempWritten < bytesCanTemp )
+            if ( tempWritten > 0 && tempWritten < maxBytesCanTemp )
             {
-                bytesRead = Math.Min(bytesCanTemp - tempWritten, bytesToRead);
+                bytesRead = Math.Min(maxBytesCanTemp - tempWritten, maxBytesToRead);
 
                 Buffer.BlockCopy(inArray, inStart, tempArray, tempWritten, bytesRead);
 
@@ -79,14 +79,14 @@ namespace CnDream.Core
                 var padding = tempWritten % inputBlockSize;
                 if ( padding > 0 )
                 {
-                    Debug.Assert(bytesRead == bytesToRead);
+                    Debug.Assert(bytesRead == maxBytesToRead);
 
                     padding = inputBlockSize - padding;
                     tempWritten += WriteGarbage(padding, tempArray, tempStart + tempWritten);
                 }
 
                 outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
-                Debug.Assert(outOffset < output.Offset + bytesCanWrite);
+                Debug.Assert(outOffset < outStart + maxBytesCanWrite);
 
                 tempWritten = 0;
                 bytesWritten = outOffset - outStart;
@@ -99,13 +99,13 @@ namespace CnDream.Core
 
             Debug.Assert(tempWritten == 0);
 
-            var blocksCanRead = Math.Min((bytesToRead - bytesRead) / inputBlockSize, (bytesCanWrite - outOffset) / outputBlockSize);
+            var blocksCanRead = Math.Min((maxBytesToRead - bytesRead) / inputBlockSize, (maxBytesCanWrite - outOffset) / outputBlockSize);
 
             if ( blocksCanRead == 0 )
             {
-                tempWritten = bytesToRead - bytesRead;
+                tempWritten = maxBytesToRead - bytesRead;
                 Buffer.BlockCopy(inArray, inStart + bytesRead, tempArray, 0, tempWritten);
-                bytesRead = bytesToRead;
+                bytesRead = maxBytesToRead;
 
                 tempWritten += WriteGarbage(inputBlockSize - (tempWritten % inputBlockSize), tempArray, tempStart + tempWritten);
 
@@ -121,7 +121,7 @@ namespace CnDream.Core
                 bytesRead += bytesCanRead;
                 bytesWritten = outOffset - outStart;
 
-                return bytesRead == bytesToRead;
+                return bytesRead == maxBytesToRead;
             }
         }
 
