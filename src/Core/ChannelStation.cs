@@ -4,12 +4,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace CnDream.Core
 {
-    public class ChannelStation : IChannelStation
+    public abstract class ChannelStation : IChannelStation
     {
         IEndPointStation EndPointStation;
         ISocketAsyncEventArgsPool ReceiveEventArgsPool;
@@ -133,17 +134,7 @@ namespace CnDream.Core
         {
             var endpointState = EndpointStates.GetOrAdd(pairId, EndpointStateFactory);
 
-            if ( !FreeChannels.TryTake(out var freeChannelId) )
-            {
-                // TODO: No free channels left! Need handle this depend on whether we're remote or local.
-            }
-
-            if ( !Channels.TryGetValue(freeChannelId, out var channel) )
-            {
-                // Channel was removed, but FreeChannels is ConcurrentBag so could not remove a specific item, just find another.
-                await HandleEndPointReceivedDataAsync(pairId, buffer);
-                return;
-            }
+            var channel = await FindFreeChannel(out var channelId);
 
             var ss = SocketSenderPool.Acquire();
             var output = DataBufferPool.Acquire();
@@ -159,10 +150,35 @@ namespace CnDream.Core
             }
             await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
 
-
             DataBufferPool.Release(output);
             SocketSenderPool.Release(ss);
+
+            FreeChannels.Add(channelId);
         }
+
+        private async Task<(Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> FindFreeChannel( out int freeChannelId )
+        {
+            (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker) channel;
+
+            do
+            {
+                if ( !FreeChannels.TryTake(out freeChannelId) )
+                {
+                    await OnCreateFreeChannel();
+                }
+            }
+            while ( !Channels.TryGetValue(freeChannelId, out channel) );
+
+            return channel;
+        }
+
+        public Task SendMessageAsync( string message )
+        {
+            var bytes = Encoding.UTF8.GetBytes(message);
+            return HandleEndPointReceivedDataAsync(0, new ArraySegment<byte>(bytes, 0, bytes.Length));
+        }
+
+        protected abstract Task OnCreateFreeChannel();
 
         class EndpointState
         {
