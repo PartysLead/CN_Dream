@@ -82,7 +82,7 @@ namespace CnDream.Core
                     Debug.Assert(bytesRead == maxBytesToRead);
 
                     padding = inputBlockSize - padding;
-                    tempWritten += WriteGarbage(padding, tempArray, tempStart + tempWritten);
+                    tempWritten += WriteZero(padding, tempArray, tempStart + tempWritten);
                 }
 
                 outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
@@ -107,7 +107,7 @@ namespace CnDream.Core
                 Buffer.BlockCopy(inArray, inStart + bytesRead, tempArray, 0, tempWritten);
                 bytesRead = maxBytesToRead;
 
-                tempWritten += WriteGarbage(inputBlockSize - (tempWritten % inputBlockSize), tempArray, tempStart + tempWritten);
+                tempWritten += WriteZero(inputBlockSize - (tempWritten % inputBlockSize), tempArray, tempStart + tempWritten);
 
                 outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
                 bytesWritten = outOffset - outStart;
@@ -161,14 +161,13 @@ namespace CnDream.Core
             bytesWritten += 4;
         }
 
-        private static int WriteGarbage( int count, byte[] array, int offset )
+        private static int WriteZero( int count, byte[] array, int offset )
         {
-            var rand = new Random();
             var limit = offset + count;
 
             for ( int i = offset; i < limit; i++ )
             {
-                array[i] = (byte)rand.Next(0, 256);
+                array[i] = 0;
             }
 
             return count;

@@ -10,7 +10,8 @@ namespace CnDream.Core
         bool UnpackData
         (
             ArraySegment<byte> output,
-            out (int bytesWritten, int bytesRead, int? pairId, int? serialId, int? payloadSize) description,
+            out int bytesWritten, out int bytesRead,
+            out int pairId, out int serialId, out int payloadSize,
             ArraySegment<byte> input
         );
     }

@@ -73,22 +73,13 @@ namespace CnDream.Core
                     var output = DataBufferPool.Acquire();
 
                     var input = new ArraySegment<byte>(e.Buffer, e.Offset, e.BytesTransferred);
-                    while ( unpacker.UnpackData(output, out var description, input) )
+                    while ( unpacker.UnpackData(output, out var bytesWritten, out var bytesRead,
+                                                out var pairId, out var serialId, out var payloadSize, input) )
                     {
-                        var pairId = description.pairId.Value;
-                        var serialId = description.serialId.Value;
-                        var payloadSize = description.payloadSize.Value;
-                        var bytesRead = description.bytesRead;
-
-                        var unpackedData = new ArraySegment<byte>(output.Array, output.Offset, description.bytesWritten);
+                        var unpackedData = new ArraySegment<byte>(output.Array, output.Offset, bytesWritten);
                         var endpointSocket = EndPointStation.FindEndPoint(pairId);
 
                         await EndpointStates[pairId].BufferAndSendAvailableContentsAsync(endpointSocket, serialId, payloadSize, unpackedData);
-
-                        if ( bytesRead == input.Count )
-                        {
-                            break;
-                        }
 
                         input = new ArraySegment<byte>(input.Array, input.Offset + bytesRead, input.Count - bytesRead);
                     }
