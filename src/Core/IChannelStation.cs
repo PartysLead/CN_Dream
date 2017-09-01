@@ -6,8 +6,8 @@ namespace CnDream.Core
 {
     public interface IChannelStation
     {
-        bool TryAddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker, out int channelId );
-        bool TryRemoveChannel( int channelId, out Socket socket, out IDataPacker dataPacker, out IDataUnpacker dataUnpacker );
+        int AddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker );
+        void RemoveChannel( int channelId );
 
         Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer );
 

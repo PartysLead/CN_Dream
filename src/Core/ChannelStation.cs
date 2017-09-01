@@ -18,11 +18,12 @@ namespace CnDream.Core
         IPool<ISocketSender> SocketSenderPool;
 
         int ChannelIdSeed = 0;
-        ConcurrentDictionary<int, (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> Channels
-            = new ConcurrentDictionary<int, (Socket, SocketAsyncEventArgs, IDataPacker)>();
+        ConcurrentDictionary<int, ChannelDescription> Channels = new ConcurrentDictionary<int, ChannelDescription>();
         ConcurrentDictionary<int, EndpointState> EndpointStates = new ConcurrentDictionary<int, EndpointState>();
         Func<int, EndpointState> EndpointStateFactory;
-        ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
+        Func<string, Task> MessageHandlerFunc;
+
+        protected readonly ConcurrentBag<int> FreeChannels = new ConcurrentBag<int>();
 
         public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IPool<ArraySegment<byte>> dataBufferPool, IPool<ISocketSender> socketSenderPool )
         {
@@ -31,26 +32,31 @@ namespace CnDream.Core
             DataBufferPool = dataBufferPool;
             SocketSenderPool = socketSenderPool;
             EndpointStateFactory = _ => new EndpointState(DataBufferPool, SocketSenderPool);
+            MessageHandlerFunc = HandleReceivedMessageAsync;
         }
 
-        public bool TryAddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker, out int channelId )
+        public int AddChannel( Socket socket, IDataPacker dataPacker, IDataUnpacker dataUnpacker )
         {
-            channelId = Interlocked.Increment(ref ChannelIdSeed);
+            var channelId = Interlocked.Increment(ref ChannelIdSeed);
+            if ( channelId == 0 )
+            {
+                channelId = Interlocked.Increment(ref ChannelIdSeed);
+            }
 
             var recvArgs = AcquireRecvArgs(dataUnpacker);
 
-            if ( Channels.TryAdd(channelId, (socket, recvArgs, dataPacker)) )
+            if ( Channels.TryAdd(channelId, new ChannelDescription(channelId, socket, recvArgs, dataPacker)) )
             {
                 FreeChannels.Add(channelId);
                 BeginReceive(socket, recvArgs);
 
-                return true;
+                return channelId;
             }
             else
             {
                 ReleaseRecvArgs(recvArgs);
 
-                return false;
+                return -1;
             }
         }
 
@@ -78,9 +84,17 @@ namespace CnDream.Core
                                                 out var pairId, out var serialId, out var payloadSize, input) )
                     {
                         var unpackedData = new ArraySegment<byte>(output.Array, output.Offset, bytesWritten);
-                        var endpointSocket = EndPointStation.FindEndPoint(pairId);
+                        var endpointState = EndpointStates.GetOrAdd(pairId, EndpointStateFactory);
 
-                        await EndpointStates[pairId].BufferAndSendAvailableContentsAsync(endpointSocket, serialId, payloadSize, unpackedData);
+                        if ( pairId == 0 )
+                        {
+                            await endpointState.FireAvailableMessagesAsync(serialId, payloadSize, unpackedData, MessageHandlerFunc);
+                        }
+                        else
+                        {
+                            var endpointSocket = EndPointStation.FindEndPoint(pairId);
+                            await endpointState.SendAvailableContentsAsync(endpointSocket, serialId, payloadSize, unpackedData);
+                        }
 
                         input = new ArraySegment<byte>(input.Array, input.Offset + bytesRead, input.Count - bytesRead);
                     }
@@ -114,57 +128,49 @@ namespace CnDream.Core
             return dataUnpacker;
         }
 
-        public bool TryRemoveChannel( int channelId, out Socket socket, out IDataPacker dataPacker, out IDataUnpacker dataUnpacker )
+        public void RemoveChannel( int channelId )
         {
-            var result = Channels.TryRemove(channelId, out var channel);
-
-            socket = channel.socket;
-            dataPacker = channel.dataPacker;
-            dataUnpacker = null;
-
-            if ( result )
+            if ( Channels.TryRemove(channelId, out var channel) )
             {
-                dataUnpacker = ReleaseRecvArgs(channel.recvArgs);
+                ReleaseRecvArgs(channel.RecvArgs);
             }
-
-            return result;
         }
 
         public async Task HandleEndPointReceivedDataAsync( int pairId, ArraySegment<byte> buffer )
         {
             var endpointState = EndpointStates.GetOrAdd(pairId, EndpointStateFactory);
 
-            var channel = await FindFreeChannel(out var channelId);
+            var channel = await FindFreeChannel();
 
             var ss = SocketSenderPool.Acquire();
             var output = DataBufferPool.Acquire();
 
             int? serialId = Interlocked.Increment(ref endpointState.PackingSerialId);
             int bytesWritten;
-            while ( !channel.dataPacker.PackData(output, out bytesWritten, out var bytesRead, pairId, serialId, buffer) )
+            while ( !channel.DataPacker.PackData(output, out bytesWritten, out var bytesRead, pairId, serialId, buffer) )
             {
-                await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+                await ss.SendDataAsync(channel.Socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
 
                 buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytesRead, buffer.Count - bytesRead);
                 serialId = null;
             }
-            await ss.SendDataAsync(channel.socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+            await ss.SendDataAsync(channel.Socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
 
             DataBufferPool.Release(output);
             SocketSenderPool.Release(ss);
 
-            FreeChannels.Add(channelId);
+            FreeChannels.Add(channel.Id);
         }
 
-        private async Task<(Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker)> FindFreeChannel( out int freeChannelId )
+        private async Task<ChannelDescription> FindFreeChannel()
         {
-            (Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker) channel;
-
+            ChannelDescription channel;
+            int freeChannelId;
             do
             {
                 if ( !FreeChannels.TryTake(out freeChannelId) )
                 {
-                    await OnCreateFreeChannel();
+                    freeChannelId = await CreateFreeChannelAsync();
                 }
             }
             while ( !Channels.TryGetValue(freeChannelId, out channel) );
@@ -172,13 +178,15 @@ namespace CnDream.Core
             return channel;
         }
 
+        protected abstract Task<int> CreateFreeChannelAsync();
+
+        protected abstract Task HandleReceivedMessageAsync( string message );
+
         public Task SendMessageAsync( string message )
         {
             var bytes = Encoding.UTF8.GetBytes(message);
             return HandleEndPointReceivedDataAsync(0, new ArraySegment<byte>(bytes, 0, bytes.Length));
         }
-
-        protected abstract Task OnCreateFreeChannel();
 
         class EndpointState
         {
@@ -197,7 +205,24 @@ namespace CnDream.Core
                 EndPointSendBufferStateFactory = _ => new EndpointSendBufferState(BufferPool.Acquire());
             }
 
-            public async Task BufferAndSendAvailableContentsAsync( Socket endpointSocket, int serialId, int payloadSize, ArraySegment<byte> data )
+            public async Task FireAvailableMessagesAsync( int serialId, int payloadSize, ArraySegment<byte> data, Func<string, Task> messageHandler )
+            {
+                var sendBufferState = UnpackedDataBuffers.GetOrAdd(serialId, EndPointSendBufferStateFactory);
+                var buffer = sendBufferState.Buffer;
+
+                Buffer.BlockCopy(data.Array, data.Offset, buffer.Array, buffer.Offset + sendBufferState.BytesInBuffer, data.Count);
+                sendBufferState.BytesInBuffer += data.Count;
+
+                if ( serialId == UnpackingSerialId && sendBufferState.BytesInBuffer == payloadSize )
+                {
+                    await messageHandler(Encoding.UTF8.GetString(buffer.Array, buffer.Offset, payloadSize));
+                    RemoveAndReleaseBuffers(serialId);
+                }
+
+                throw new NotImplementedException();
+            }
+
+            public async Task SendAvailableContentsAsync( Socket endpointSocket, int serialId, int payloadSize, ArraySegment<byte> data )
             {
                 var sendBufferState = UnpackedDataBuffers.GetOrAdd(serialId, EndPointSendBufferStateFactory);
 
@@ -229,7 +254,7 @@ namespace CnDream.Core
                     }
                     else
                     {
-                        Buffer.BlockCopy(data.Array, data.Offset, buffer.Array, bytesInBuffer, newBytes);
+                        Buffer.BlockCopy(data.Array, data.Offset, buffer.Array, buffer.Offset + bytesInBuffer, newBytes);
 
                         sendBufferState.BytesInBuffer += bytesInBuffer;
                     }
@@ -258,10 +283,7 @@ namespace CnDream.Core
 
                 if ( bytesSent == payloadSize )
                 {
-                    if ( UnpackedDataBuffers.TryRemove(serialId, out _) )
-                    {
-                        BufferPool.Release(sendBufferState.Buffer);
-                    }
+                    RemoveAndReleaseBuffers(serialId);
 
                     await SendNextReadyBuffersAsync(endpointSocket, serialId, sender);
                 }
@@ -286,8 +308,15 @@ namespace CnDream.Core
                     var sendbuffer = sendBufferState.Buffer;
                     await sender.SendDataAsync(endpointSocket, new ArraySegment<byte>(sendbuffer.Array, sendbuffer.Offset, sendBufferState.BytesInBuffer));
 
-                    UnpackedDataBuffers.TryRemove(serialId, out _);
-                    BufferPool.Release(sendbuffer);
+                    RemoveAndReleaseBuffers(serialId);
+                }
+            }
+
+            private void RemoveAndReleaseBuffers( int serialId )
+            {
+                if ( UnpackedDataBuffers.TryRemove(serialId, out var state) )
+                {
+                    BufferPool.Release(state.Buffer);
                 }
             }
 
@@ -303,6 +332,22 @@ namespace CnDream.Core
                 {
                     Buffer = buffer;
                 }
+            }
+        }
+
+        struct ChannelDescription
+        {
+            public readonly int Id;
+            public readonly Socket Socket;
+            public readonly SocketAsyncEventArgs RecvArgs;
+            public readonly IDataPacker DataPacker;
+
+            public ChannelDescription( int id, Socket socket, SocketAsyncEventArgs recvArgs, IDataPacker dataPacker )
+            {
+                Id = id;
+                Socket = socket;
+                RecvArgs = recvArgs;
+                DataPacker = dataPacker;
             }
         }
     }

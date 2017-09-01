@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace CnDream.Core
 {
-    public class LocalStation
+    public class LocalStation : ChannelStation
     {
         IEndPointStation EndPointStation;
         IChannelStation ChannelStation;
@@ -32,6 +32,11 @@ namespace CnDream.Core
         }
 
         private IPEndPoint Socks5Negotiate( Socket client )
+        {
+            throw new NotImplementedException();
+        }
+
+        private void CreateNewChannel( object sender, EventArgs e )
         {
             throw new NotImplementedException();
         }

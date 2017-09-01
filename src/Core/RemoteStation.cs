@@ -7,13 +7,15 @@ using System.Threading.Tasks;
 
 namespace CnDream.Core
 {
-    public class RemoteStation
+    public class RemoteStation : ChannelStation
     {
         IEndPointStation EndPointStation;
         IChannelStation ChannelStation;
 
         public async Task Run()
         {
+            ChannelStation.MessageReceived += ChannelStation_MessageReceived;
+
             var listener = new TcpListener(IPAddress.Any, 1080);
             listener.Start();
             while ( true )
@@ -23,12 +25,17 @@ namespace CnDream.Core
             }
         }
 
+        private void ChannelStation_MessageReceived( object sender, EventArgs e )
+        {
+            throw new NotImplementedException();
+        }
+
         private void Negotiate( Socket channelSocket )
         {
             IDataPacker dataPacker = null;
             IDataUnpacker dataUnpacker = null;
 
-            ChannelStation.TryAddChannel(channelSocket, dataPacker, dataUnpacker, out var cid);
+            var channelId = ChannelStation.AddChannel(channelSocket, dataPacker, dataUnpacker);
 
             throw new NotImplementedException();
         }
