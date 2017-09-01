@@ -36,7 +36,12 @@ namespace CnDream.Core
             throw new NotImplementedException();
         }
 
-        private void CreateNewChannel( object sender, EventArgs e )
+        protected override Task<int> CreateFreeChannelAsync()
+        {
+            throw new NotImplementedException();
+        }
+
+        protected override Task HandleReceivedMessageAsync( string message )
         {
             throw new NotImplementedException();
         }

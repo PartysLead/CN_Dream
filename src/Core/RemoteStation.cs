@@ -14,8 +14,6 @@ namespace CnDream.Core
 
         public async Task Run()
         {
-            ChannelStation.MessageReceived += ChannelStation_MessageReceived;
-
             var listener = new TcpListener(IPAddress.Any, 1080);
             listener.Start();
             while ( true )
@@ -25,11 +23,6 @@ namespace CnDream.Core
             }
         }
 
-        private void ChannelStation_MessageReceived( object sender, EventArgs e )
-        {
-            throw new NotImplementedException();
-        }
-
         private void Negotiate( Socket channelSocket )
         {
             IDataPacker dataPacker = null;
@@ -37,6 +30,16 @@ namespace CnDream.Core
 
             var channelId = ChannelStation.AddChannel(channelSocket, dataPacker, dataUnpacker);
 
+            throw new NotImplementedException();
+        }
+
+        protected override Task<int> CreateFreeChannelAsync()
+        {
+            throw new NotImplementedException();
+        }
+
+        protected override Task HandleReceivedMessageAsync( string message )
+        {
             throw new NotImplementedException();
         }
     }
