@@ -9,9 +9,6 @@ namespace CnDream.Core
 {
     public class LocalStation : ChannelStation
     {
-        IEndPointStation EndPointStation;
-        IChannelStation ChannelStation;
-
         public async Task Run()
         {
             var listener = new TcpListener(IPAddress.Any, 1080);
@@ -25,7 +22,7 @@ namespace CnDream.Core
                 {
                     var remote = Socks5Negotiate(client);
 
-                    await ChannelStation.SendMessageAsync($"Connect {pairId} to {remote}");
+                    await SendMessageAsync($"Connect {pairId} to {remote}");
                     EndPointStation.AddEndPoint(++pairId, client);
                 });
             }

@@ -9,9 +9,6 @@ namespace CnDream.Core
 {
     public class RemoteStation : ChannelStation
     {
-        IEndPointStation EndPointStation;
-        IChannelStation ChannelStation;
-
         public async Task Run()
         {
             var listener = new TcpListener(IPAddress.Any, 1080);
@@ -28,7 +25,7 @@ namespace CnDream.Core
             IDataPacker dataPacker = null;
             IDataUnpacker dataUnpacker = null;
 
-            var channelId = ChannelStation.AddChannel(channelSocket, dataPacker, dataUnpacker);
+            var channelId = AddChannel(channelSocket, dataPacker, dataUnpacker);
 
             throw new NotImplementedException();
         }
@@ -40,6 +37,10 @@ namespace CnDream.Core
 
         protected override Task HandleReceivedMessageAsync( string message )
         {
+            if ( message.StartsWith("Connect") )
+            {
+                // EndPointStation.AddEndPoint( ... )
+            }
             throw new NotImplementedException();
         }
     }

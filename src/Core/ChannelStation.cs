@@ -12,7 +12,9 @@ namespace CnDream.Core
 {
     public abstract class ChannelStation : IChannelStation
     {
-        IEndPointStation EndPointStation;
+        IEndPointStation _EndPointStation;
+        protected IEndPointStation EndPointStation => _EndPointStation;
+
         ISocketAsyncEventArgsPool ReceiveEventArgsPool;
         IPool<ArraySegment<byte>> DataBufferPool;
         IPool<ISocketSender> SocketSenderPool;
@@ -27,7 +29,7 @@ namespace CnDream.Core
 
         public void Initialize( IEndPointStation endpointStation, ISocketAsyncEventArgsPool recvArgsPool, IPool<ArraySegment<byte>> dataBufferPool, IPool<ISocketSender> socketSenderPool )
         {
-            EndPointStation = endpointStation;
+            _EndPointStation = endpointStation;
             ReceiveEventArgsPool = recvArgsPool;
             DataBufferPool = dataBufferPool;
             SocketSenderPool = socketSenderPool;
