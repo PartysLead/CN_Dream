@@ -134,6 +134,8 @@ namespace CnDream.Core
             rand.NextBytes(bndAddr);
             ns.Write(bndAddr, 0, bndAddr.Length);
 
+            ns.Dispose();
+
             return result;
         }
 
@@ -141,13 +143,20 @@ namespace CnDream.Core
         {
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             var aes = Aes.Create();
+
+            byte[] salt = GenerateSalt();
+            var d = new Rfc2898DeriveBytes("password", salt);
+            aes.Key = d.GetBytes(16);
+
             var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>));// TODO:???
             var dataUnpacker = new DataUnpacker(aes.CreateDecryptor());// TODO:???
 
             await socket.ConnectAsync("", 1234);
 
-            var ns = new NetworkStream(socket, ownsSocket: false);
-            await ns.WriteAsync(aes.IV, 0, aes.IV.Length);
+            using ( var ns = new NetworkStream(socket, ownsSocket: false) )
+            {
+                await ns.WriteAsync(aes.IV, 0, aes.IV.Length);
+            }
 
             return AddChannel(socket, dataPacker, dataUnpacker);
         }

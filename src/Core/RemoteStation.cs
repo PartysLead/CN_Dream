@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -22,12 +23,22 @@ namespace CnDream.Core
 
         private void Negotiate( Socket channelSocket )
         {
-            IDataPacker dataPacker = null;
-            IDataUnpacker dataUnpacker = null;
+            using ( var ns = new NetworkStream(channelSocket, ownsSocket: false) )
+            {
+                var iv = new byte[16];
+                ns.Read(iv, 0, iv.Length);
 
-            var channelId = AddChannel(channelSocket, dataPacker, dataUnpacker);
+                var d = new Rfc2898DeriveBytes("password", GenerateSalt()); // TODO:!!!!
 
-            throw new NotImplementedException();
+                var aes = Aes.Create();
+                aes.IV = iv;
+                aes.Key = d.GetBytes(16);
+
+                var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>)); // TODO:????
+                var dataUnpacker = new DataUnpacker(aes.CreateDecryptor()); // TODO:????
+
+                var channelId = AddChannel(channelSocket, dataPacker, dataUnpacker);
+            }
         }
 
         protected override Task<int> CreateFreeChannelAsync()
