@@ -14,6 +14,11 @@ namespace CnDream.Core
         int PairId, SerialId, PayloadSize, PayloadWritten;
         bool HeaderRead;
 
+        public DataUnpacker( ICryptoTransform decryptor )
+        {
+            Decryptor = decryptor;
+        }
+
         public bool UnpackData
         (
             ArraySegment<byte> output,

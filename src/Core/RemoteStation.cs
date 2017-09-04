@@ -37,7 +37,7 @@ namespace CnDream.Core
 
         protected override Task HandleReceivedMessageAsync( string message )
         {
-            if ( message.StartsWith("Connect") )
+            if ( message.StartsWith("+E ") )
             {
                 // EndPointStation.AddEndPoint( ... )
             }
