@@ -8,59 +8,36 @@ namespace CnDream.Core
     public class BufferPool : Pool<ArraySegment<byte>>
     {
         readonly int PerAcquireSize;
-        readonly int CapacityGrowDelta;
+        byte[] BuffersBed;
 
-        int ActiveCapacity;
-        byte[] ActiveChunk;
-
-        public BufferPool( int perAcquireSizeInKB, int initialChunkCapacity, int capacityGrowDelta )
+        public BufferPool( int perAcquireSizeInKB, int buffersInPool )
         {
             PerAcquireSize = perAcquireSizeInKB * 1024;
-            CapacityGrowDelta = capacityGrowDelta;
-            Initialize(initialChunkCapacity);
+            BuffersBed = new byte[PerAcquireSize * buffersInPool];
+            var buffers = GenerateArraySegments(buffersInPool);
         }
 
-        private void Initialize( int capacity )
+        private IEnumerable<ArraySegment<byte>> GenerateArraySegments( int buffersInPool )
         {
-            lock ( this ) // serialize multiple calls
+            var result = new ArraySegment<byte>[buffersInPool];
+
+            for ( int i = 0, offset = 0; i < buffersInPool; i++, offset += PerAcquireSize )
             {
-                if ( FreeObjects.IsEmpty )
-                {
-                    var newChunk = new byte[PerAcquireSize * capacity];
-                    var newBuffers = GenerateArraySegments(newChunk, capacity);
-
-                    ActiveChunk = newChunk;
-                    FreeObjects = new ConcurrentBag<ArraySegment<byte>>(newBuffers);
-                    ActiveCapacity = capacity;
-                }
-            }
-        }
-
-        private IEnumerable<ArraySegment<byte>> GenerateArraySegments( byte[] newChunk, int capacity )
-        {
-            var result = new ArraySegment<byte>[capacity];
-
-            for ( int i = 0, offset = 0; i < capacity; i++, offset += PerAcquireSize )
-            {
-                result[i] = new ArraySegment<byte>(newChunk, offset, PerAcquireSize);
+                result[i] = new ArraySegment<byte>(BuffersBed, offset, PerAcquireSize);
             }
 
             return result;
         }
 
-        protected override bool CreateObject( out ArraySegment<byte> obj )
+        protected override ArraySegment<byte> CreateObject()
         {
-            var newCap = ActiveCapacity + CapacityGrowDelta; // We don't want the number grow for each thread
-
-            Initialize(newCap);
-
-            obj = Acquire();
-            return true;
+            var array = new byte[PerAcquireSize];
+            return new ArraySegment<byte>(array, 0, array.Length);
         }
 
         public override void Release( ArraySegment<byte> t )
         {
-            if ( t.Array == ActiveChunk )
+            if ( t.Array == BuffersBed )
             {
                 base.Release(t);
             }

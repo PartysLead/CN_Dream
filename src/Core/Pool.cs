@@ -5,17 +5,17 @@ namespace CnDream.Core
 {
     public abstract class Pool<T> : IPool<T>
     {
-        protected ConcurrentBag<T> FreeObjects = new ConcurrentBag<T>();
+        readonly ConcurrentBag<T> FreeObjects = new ConcurrentBag<T>();
 
         public virtual T Acquire()
         {
-            if ( FreeObjects.TryTake(out var result) || CreateObject(out result) )
+            if ( FreeObjects.TryTake(out var result) )
             {
                 return result;
             }
             else
             {
-                throw new NotImplementedException();
+                return CreateObject();
             }
         }
 
@@ -24,6 +24,6 @@ namespace CnDream.Core
             FreeObjects.Add(t);
         }
 
-        protected abstract bool CreateObject( out T obj );
+        protected abstract T CreateObject();
     }
 }

@@ -34,11 +34,6 @@ namespace CnDream.Core
             Release(t);
         }
 
-        protected override bool CreateObject( out SocketAsyncEventArgs obj )
-        {
-            obj = new SocketAsyncEventArgs();
-
-            return true;
-        }
+        protected override SocketAsyncEventArgs CreateObject() => new SocketAsyncEventArgs();
     }
 }

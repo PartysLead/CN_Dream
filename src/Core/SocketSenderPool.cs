@@ -14,11 +14,6 @@ namespace CnDream.Core
             SendArgsPool = sendArgsPool;
         }
 
-        protected override bool CreateObject( out ISocketSender obj )
-        {
-            obj = new SocketSender(SendArgsPool);
-
-            return true;
-        }
+        protected override ISocketSender CreateObject() => new SocketSender(SendArgsPool);
     }
 }
