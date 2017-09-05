@@ -151,7 +151,7 @@ namespace CnDream.Core
             var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>));// TODO:???
             var dataUnpacker = new DataUnpacker(aes.CreateDecryptor());// TODO:???
 
-            await socket.ConnectAsync("", 1234);
+            await socket.ConnectAsync("localhost", 1234);// TODO: config!
 
             using ( var ns = new NetworkStream(socket, ownsSocket: false) )
             {
