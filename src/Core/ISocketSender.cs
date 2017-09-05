@@ -6,6 +6,6 @@ namespace CnDream.Core
 {
     public interface ISocketSender
     {
-        Task SendDataAsync( Socket socket, ArraySegment<byte> buffer );
+        Task SendDataAsync( Socket socket, byte[] array, int offset, int count );
     }
 }

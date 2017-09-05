@@ -151,12 +151,12 @@ namespace CnDream.Core
             int bytesWritten;
             while ( !channel.DataPacker.PackData(output, out bytesWritten, out var bytesRead, pairId, serialId, buffer) )
             {
-                await ss.SendDataAsync(channel.Socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+                await ss.SendDataAsync(channel.Socket, output.Array, output.Offset, bytesWritten);
 
                 buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytesRead, buffer.Count - bytesRead);
                 serialId = null;
             }
-            await ss.SendDataAsync(channel.Socket, new ArraySegment<byte>(output.Array, output.Offset, bytesWritten));
+            await ss.SendDataAsync(channel.Socket, output.Array, output.Offset, bytesWritten);
 
             DataBufferPool.Release(output);
             SocketSenderPool.Release(ss);
@@ -278,13 +278,13 @@ namespace CnDream.Core
                 {
                     var sendbuffer = sendBufferState.Buffer;
 
-                    await sender.SendDataAsync(endpointSocket, new ArraySegment<byte>(sendbuffer.Array, sendbuffer.Offset, bytesInBuffer));
+                    await sender.SendDataAsync(endpointSocket, sendbuffer.Array, sendbuffer.Offset, bytesInBuffer);
                     bytesSent += bytesInBuffer;
 
                     sendBufferState.BytesInBuffer = 0;
                 }
 
-                await sender.SendDataAsync(endpointSocket, data);
+                await sender.SendDataAsync(endpointSocket, data.Array, data.Offset, data.Count);
                 bytesSent += data.Count;
                 sendBufferState.BytesSent = bytesSent;
 
@@ -313,7 +313,7 @@ namespace CnDream.Core
                     }
 
                     var sendbuffer = sendBufferState.Buffer;
-                    await sender.SendDataAsync(endpointSocket, new ArraySegment<byte>(sendbuffer.Array, sendbuffer.Offset, sendBufferState.BytesInBuffer));
+                    await sender.SendDataAsync(endpointSocket, sendbuffer.Array, sendbuffer.Offset, sendBufferState.BytesInBuffer);
 
                     RemoveAndReleaseBuffers(serialId);
                 }

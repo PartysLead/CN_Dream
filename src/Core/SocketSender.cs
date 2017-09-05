@@ -15,12 +15,12 @@ namespace CnDream.Core
             SendArgsPool = sendArgsPool;
         }
 
-        public Task SendDataAsync( Socket socket, ArraySegment<byte> buffer )
+        public Task SendDataAsync( Socket socket, byte[] array, int offset, int count )
         {
             var tcs = new TaskCompletionSource<bool>();
 
             var e = SendArgsPool.Acquire();
-            e.SetBuffer(buffer.Array, buffer.Offset, buffer.Count);
+            e.SetBuffer(array, offset, count);
             e.UserToken = tcs;
             e.Completed += OnDataSent;
 
