@@ -46,13 +46,33 @@ namespace CnDream.Core
             throw new NotImplementedException();
         }
 
-        protected override Task HandleReceivedMessageAsync( string message )
+        protected override async Task HandleReceivedMessageAsync( string message )
         {
             if ( message.StartsWith("+E ") )
             {
-                // EndPointStation.AddEndPoint( ... )
+                var parts = message.Split(' ');
+                var pairId = Int32.Parse(parts[1]);
+                var act = Byte.Parse(parts[2]);
+                var addr = parts[3];
+                var sep = addr.LastIndexOf(':');
+                var host = addr.Substring(0, sep);
+                var port = Int32.Parse(addr.Substring(sep + 1));
+
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                switch ( act )
+                {
+                    case 1: // Connect
+                        await socket.ConnectAsync(host, port);
+                        break;
+                    case 2: // Bind
+                    case 3: // Udp Associate
+                        throw new NotImplementedException();
+                    default:
+                        break;
+                }
+
+                EndPointStation.AddEndPoint(pairId, socket);
             }
-            throw new NotImplementedException();
         }
     }
 }

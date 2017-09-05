@@ -13,19 +13,23 @@ namespace CnDream.Core
     {
         public async Task Run()
         {
-            var listener = new TcpListener(IPAddress.Any, 1080);
+            var pairIdSeed = 0;
+            var listener = new TcpListener(IPAddress.Any, 1080); // TODO: config!!
             listener.Start();
-            var pairId = 0;
             while ( true )
             {
                 var client = await listener.AcceptSocketAsync();
 
+                var pairId = Interlocked.Increment(ref pairIdSeed);
                 _ = Task.Run(async () =>
                 {
                     var command = Negotiate(client);
-
-                    await SendMessageAsync($"+E {pairId} {command}");
-                    EndPointStation.AddEndPoint(Interlocked.Increment(ref pairId), client);
+                    if ( command != null )
+                    {
+                        var cmd = command.Value;
+                        await SendMessageAsync($"+E {pairId} {cmd.act} {cmd.addr}");
+                        EndPointStation.AddEndPoint(pairId, client);
+                    }
                 });
             }
         }
