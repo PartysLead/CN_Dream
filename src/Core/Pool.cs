@@ -24,6 +24,8 @@ namespace CnDream.Core
             FreeObjects.Add(t);
         }
 
+        public PooledObject<T> GetPooledObject() => new PooledObject<T>(this, Acquire());
+
         protected abstract T CreateObject();
     }
 }

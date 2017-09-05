@@ -8,5 +8,7 @@ namespace CnDream.Core
     {
         T Acquire();
         void Release( T t );
+
+        PooledObject<T> GetPooledObject();
     }
 }
