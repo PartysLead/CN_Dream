@@ -333,7 +333,6 @@ namespace CnDream.Core
             {
                 public ArraySegment<byte> Buffer;
                 public bool Ready;
-                public int PayloadSize;
                 public int BytesSent;
                 public int BytesInBuffer;
 
