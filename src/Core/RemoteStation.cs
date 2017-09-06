@@ -10,9 +10,14 @@ namespace CnDream.Core
 {
     public class RemoteStation : ChannelStation
     {
-        public async Task Run()
+        Settings Settings;
+
+        public async Task Run( Settings settings )
         {
-            var listener = new TcpListener(IPAddress.Any, 1080);
+            Settings = settings;
+            var remote = settings.Remote;
+
+            var listener = new TcpListener(remote.Listen, remote.Port);
             listener.Start();
             while ( true )
             {
@@ -25,13 +30,13 @@ namespace CnDream.Core
         {
             using ( var ns = new NetworkStream(channelSocket, ownsSocket: false) )
             {
-                var salt = new byte[16]; // TODO: config
-                var iv = new byte[16];
+                var salt = new byte[Settings.SaltSize];
+                var iv = new byte[16];//TODO:???
 
                 FillBuffer(ns, salt);
                 FillBuffer(ns, iv);
 
-                var d = new Rfc2898DeriveBytes("password", salt, iterations: 10000); // TODO:!!!!
+                var d = new Rfc2898DeriveBytes(Settings.Password, salt, Settings.Iterations);
                 var aes = Aes.Create();
                 aes.Key = d.GetBytes(16);
                 aes.IV = iv;
