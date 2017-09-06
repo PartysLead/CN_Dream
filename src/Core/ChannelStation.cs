@@ -191,11 +191,6 @@ namespace CnDream.Core
             return HandleEndPointReceivedDataAsync(0, new ArraySegment<byte>(bytes, 0, bytes.Length));
         }
 
-        protected static byte[] GenerateSalt()
-        {
-            throw new NotImplementedException();
-        }
-
         class EndpointState
         {
             IPool<ArraySegment<byte>> BufferPool;

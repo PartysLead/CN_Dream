@@ -25,20 +25,34 @@ namespace CnDream.Core
         {
             using ( var ns = new NetworkStream(channelSocket, ownsSocket: false) )
             {
+                var salt = new byte[16]; // TODO: config
                 var iv = new byte[16];
-                ns.Read(iv, 0, iv.Length);
 
-                var d = new Rfc2898DeriveBytes("password", GenerateSalt()); // TODO:!!!!
+                FillBuffer(ns, salt);
+                FillBuffer(ns, iv);
 
+                var d = new Rfc2898DeriveBytes("password", salt, iterations: 10000); // TODO:!!!!
                 var aes = Aes.Create();
-                aes.IV = iv;
                 aes.Key = d.GetBytes(16);
+                aes.IV = iv;
 
                 var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>)); // TODO:????
                 var dataUnpacker = new DataUnpacker(aes.CreateDecryptor()); // TODO:????
 
                 var channelId = AddChannel(channelSocket, dataPacker, dataUnpacker);
             }
+        }
+
+        void FillBuffer( NetworkStream ns, byte[] buffer )
+        {
+            var bytesRead = 0;
+            var bytesWritten = 0;
+            do
+            {
+                bytesRead = ns.Read(buffer, bytesRead, buffer.Length);
+                bytesWritten += bytesRead;
+            }
+            while ( bytesWritten < 16 );
         }
 
         protected override Task<int> CreateFreeChannelAsync()

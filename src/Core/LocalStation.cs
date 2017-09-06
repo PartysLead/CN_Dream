@@ -148,8 +148,7 @@ namespace CnDream.Core
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             var aes = Aes.Create();
 
-            byte[] salt = GenerateSalt();
-            var d = new Rfc2898DeriveBytes("password", salt);
+            var d = new Rfc2898DeriveBytes("password", saltSize: 16, iterations: 10000); // TODO: config
             aes.Key = d.GetBytes(16);
 
             var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>));// TODO:???
@@ -159,6 +158,7 @@ namespace CnDream.Core
 
             using ( var ns = new NetworkStream(socket, ownsSocket: false) )
             {
+                await ns.WriteAsync(d.Salt, 0, d.Salt.Length);
                 await ns.WriteAsync(aes.IV, 0, aes.IV.Length);
             }
 
