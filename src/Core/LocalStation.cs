@@ -11,11 +11,18 @@ namespace CnDream.Core
 {
     public class LocalStation : ChannelStation
     {
-        public async Task Run()
+        Settings Settings;
+
+        public async Task Run( Settings settings )
         {
-            var pairIdSeed = 0;
-            var listener = new TcpListener(IPAddress.Any, 1080); // TODO: config!!
+            Settings = settings;
+
+            var local = settings.Local;
+            var listener = new TcpListener(local.Listen, local.Port);
+
             listener.Start();
+
+            var pairIdSeed = 0;
             while ( true )
             {
                 var client = await listener.AcceptSocketAsync();
@@ -145,16 +152,18 @@ namespace CnDream.Core
 
         protected override async Task<int> CreateFreeChannelAsync()
         {
+            var config = Settings.Local;
+
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             var aes = Aes.Create();
 
-            var d = new Rfc2898DeriveBytes("password", saltSize: 16, iterations: 10000); // TODO: config
-            aes.Key = d.GetBytes(16);
+            var d = new Rfc2898DeriveBytes(Settings.Password, Settings.SaltSize, Settings.Iterations);
+            aes.Key = d.GetBytes(Settings.KeySize);
 
             var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>));// TODO:???
             var dataUnpacker = new DataUnpacker(aes.CreateDecryptor());// TODO:???
 
-            await socket.ConnectAsync("localhost", 1234);// TODO: config!
+            await socket.ConnectAsync(config.PeerAddress, config.PeerPort);
 
             using ( var ns = new NetworkStream(socket, ownsSocket: false) )
             {
