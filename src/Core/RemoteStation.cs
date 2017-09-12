@@ -41,7 +41,7 @@ namespace CnDream.Core
                 aes.Key = d.GetBytes(16);
                 aes.IV = iv;
 
-                var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>)); // TODO:????
+                var dataPacker = new DataPacker(aes.CreateEncryptor()); // TODO:????
                 var dataUnpacker = new DataUnpacker(aes.CreateDecryptor()); // TODO:????
 
                 var channelId = AddChannel(channelSocket, dataPacker, dataUnpacker);

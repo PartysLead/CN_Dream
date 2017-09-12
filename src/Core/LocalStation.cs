@@ -160,7 +160,7 @@ namespace CnDream.Core
             var d = new Rfc2898DeriveBytes(Settings.Password, Settings.SaltSize, Settings.Iterations);
             aes.Key = d.GetBytes(Settings.KeySize);
 
-            var dataPacker = new DataPacker(aes.CreateEncryptor(), default(ArraySegment<byte>));// TODO:???
+            var dataPacker = new DataPacker(aes.CreateEncryptor());// TODO:???
             var dataUnpacker = new DataUnpacker(aes.CreateDecryptor());// TODO:???
 
             await socket.ConnectAsync(config.PeerAddress, config.PeerPort);
