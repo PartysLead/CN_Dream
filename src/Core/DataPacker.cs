@@ -9,22 +9,17 @@ namespace CnDream.Core
     public class DataPacker : IDataPacker
     {
         readonly ICryptoTransform Encryptor;
-        readonly ArraySegment<byte> TempBuffer;
+        readonly byte[] TempBuffer;
 
-        public DataPacker( ICryptoTransform encryptor, ArraySegment<byte> tempBuffer )
+        public DataPacker( ICryptoTransform encryptor )
         {
             if ( !encryptor.CanTransformMultipleBlocks )
             {
                 throw new NotSupportedException("Encryptor must be able to transform multiple blocks.");
             }
 
-            if ( tempBuffer.Count != GetTempBufferSize(encryptor) )
-            {
-                throw new ArgumentException("TempBuffer does not has expected size.", nameof(tempBuffer));
-            }
-
             Encryptor = encryptor;
-            TempBuffer = tempBuffer;
+            TempBuffer = new byte[GetTempBufferSize(encryptor)];
         }
 
         public bool PackData( ArraySegment<byte> output, out int bytesWritten, out int bytesRead, int pairId, int? serialId, ArraySegment<byte> input )
@@ -38,9 +33,7 @@ namespace CnDream.Core
             var outOffset = outStart;
             var maxBytesCanWrite = output.Count;
 
-            var tempArray = TempBuffer.Array;
-            var tempStart = TempBuffer.Offset;
-            var maxBytesCanTemp = TempBuffer.Count;
+            var maxBytesCanTemp = TempBuffer.Length;
             var tempWritten = 0;
 
             var inputBlockSize = Encryptor.InputBlockSize;
@@ -50,14 +43,14 @@ namespace CnDream.Core
 
             if ( serialId.HasValue ) // the first portion
             {
-                WritePrologue(tempArray, tempStart, out tempWritten);
-                WriteInt(pairId, tempArray, tempStart, ref tempWritten);
-                WriteInt(serialId.Value, tempArray, tempStart, ref tempWritten);
-                WriteInt(maxBytesToRead, tempArray, tempStart, ref tempWritten);
+                WritePrologue(TempBuffer, 0, out tempWritten);
+                WriteInt(pairId, TempBuffer, 0, ref tempWritten);
+                WriteInt(serialId.Value, TempBuffer, 0, ref tempWritten);
+                WriteInt(maxBytesToRead, TempBuffer, 0, ref tempWritten);
 
                 if ( tempWritten == maxBytesCanTemp )
                 {
-                    outOffset += Encryptor.TransformBlock(tempArray, 0, tempStart + tempWritten, outArray, outOffset);
+                    outOffset += Encryptor.TransformBlock(TempBuffer, 0, tempWritten, outArray, outOffset);
                     Debug.Assert(outOffset < outStart + maxBytesCanWrite);
 
                     tempWritten = 0;
@@ -72,7 +65,7 @@ namespace CnDream.Core
             {
                 bytesRead = Math.Min(maxBytesCanTemp - tempWritten, maxBytesToRead);
 
-                Buffer.BlockCopy(inArray, inStart, tempArray, tempWritten, bytesRead);
+                Buffer.BlockCopy(inArray, inStart, TempBuffer, tempWritten, bytesRead);
 
                 tempWritten += bytesRead;
 
@@ -82,10 +75,10 @@ namespace CnDream.Core
                     Debug.Assert(bytesRead == maxBytesToRead);
 
                     padding = inputBlockSize - padding;
-                    tempWritten += WriteZero(padding, tempArray, tempStart + tempWritten);
+                    tempWritten += WriteZero(padding, TempBuffer, tempWritten);
                 }
 
-                outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
+                outOffset += Encryptor.TransformBlock(TempBuffer, 0, tempWritten, outArray, outOffset);
                 Debug.Assert(outOffset < outStart + maxBytesCanWrite);
 
                 tempWritten = 0;
@@ -104,12 +97,12 @@ namespace CnDream.Core
             if ( blocksCanRead == 0 )
             {
                 tempWritten = maxBytesToRead - bytesRead;
-                Buffer.BlockCopy(inArray, inStart + bytesRead, tempArray, 0, tempWritten);
+                Buffer.BlockCopy(inArray, inStart + bytesRead, TempBuffer, 0, tempWritten);
                 bytesRead = maxBytesToRead;
 
-                tempWritten += WriteZero(inputBlockSize - (tempWritten % inputBlockSize), tempArray, tempStart + tempWritten);
+                tempWritten += WriteZero(inputBlockSize - (tempWritten % inputBlockSize), TempBuffer, tempWritten);
 
-                outOffset += Encryptor.TransformBlock(tempArray, tempStart, tempWritten, outArray, outOffset);
+                outOffset += Encryptor.TransformBlock(TempBuffer, 0, tempWritten, outArray, outOffset);
                 bytesWritten = outOffset - outStart;
 
                 return true;
