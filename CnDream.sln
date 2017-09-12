@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26430.16
+VisualStudioVersion = 15.0.26730.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Remote.NetCoreApp", "src\Remote.NetCoreApp\Remote.NetCoreApp.csproj", "{661DB9D4-C2A6-461E-A515-3F60CDCBF090}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core", "src\Core\Core.csproj", "{A8AB4FF7-F1B5-4940-8E1B-4F3678878F28}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Local.NetCoreApp", "src\Local.NetCoreApp\Local.NetCoreApp.csproj", "{0E500576-ED9A-4E64-897A-35129BDAEFCB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Core.Test", "src\Core.Test\Core.Test.csproj", "{739DB150-3976-409D-9629-C8616BC1AA64}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,8 +29,15 @@ Global
 		{0E500576-ED9A-4E64-897A-35129BDAEFCB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0E500576-ED9A-4E64-897A-35129BDAEFCB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0E500576-ED9A-4E64-897A-35129BDAEFCB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{739DB150-3976-409D-9629-C8616BC1AA64}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{739DB150-3976-409D-9629-C8616BC1AA64}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{739DB150-3976-409D-9629-C8616BC1AA64}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{739DB150-3976-409D-9629-C8616BC1AA64}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B30E1D80-6C94-4F66-8AE4-58A0145E2EF2}
 	EndGlobalSection
 EndGlobal
