@@ -12,7 +12,10 @@ namespace CnDream.Core
         {
             PerAcquireSize = perAcquireSizeInKB * 1024;
             BuffersBed = new byte[PerAcquireSize * buffersInPool];
-            var buffers = GenerateArraySegments(buffersInPool);
+            foreach ( var item in GenerateArraySegments(buffersInPool) )
+            {
+                FreeObjects.Add(item);
+            }
         }
 
         private IEnumerable<ArraySegment<byte>> GenerateArraySegments( int buffersInPool )
