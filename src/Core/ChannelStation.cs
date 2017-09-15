@@ -149,16 +149,9 @@ namespace CnDream.Core
                 var output = pooledOutputBuffer.Value;
 
                 var endpointState = EndpointStates.GetOrAdd(pairId, EndpointStateFactory);
-                int? serialId = Interlocked.Increment(ref endpointState.PackingSerialId);
+                var serialId = Interlocked.Increment(ref endpointState.PackingSerialId);
 
-                int bytesWritten;
-                while ( !channel.DataPacker.PackData(output, out bytesWritten, out var bytesRead, pairId, serialId, buffer) )
-                {
-                    await sender.SendDataAsync(channel.Socket, output.Array, output.Offset, bytesWritten);
-
-                    buffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + bytesRead, buffer.Count - bytesRead);
-                    serialId = null;
-                }
+                var bytesWritten = channel.DataPacker.PackData(pairId, serialId, buffer, output);
                 await sender.SendDataAsync(channel.Socket, output.Array, output.Offset, bytesWritten);
 
                 FreeChannels.Add(channel.Id);
