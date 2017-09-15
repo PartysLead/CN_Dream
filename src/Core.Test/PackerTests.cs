@@ -3,7 +3,7 @@ using Xunit;
 
 namespace CnDream.Core.Test
 {
-    public class PackUnpackTests
+    public class PackerTests
     {
         [Fact]
         public void Test1()
