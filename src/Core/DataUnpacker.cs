@@ -183,9 +183,9 @@ namespace CnDream.Core
                 return false;
             }
 
-            PairId = ReadInt(ref i);
-            SerialId = ReadInt(ref i);
-            PayloadSize = ReadInt(ref i);
+            PairId = ReadInt(DecryptedBytes, ref i);
+            SerialId = ReadInt(DecryptedBytes, ref i);
+            PayloadSize = ReadInt(DecryptedBytes, ref i);
 
             var remainingDecrypted = limit - i;
             if ( remainingDecrypted > 0 )
@@ -197,14 +197,15 @@ namespace CnDream.Core
             return true;
         }
 
-        private int ReadInt( ref int offset )
+        // internal for testing
+        internal static int ReadInt( byte[] array, ref int offset )
         {
             var result = 0;
 
-            result |= DecryptedBytes[offset++];
-            result |= DecryptedBytes[offset++] << 8;
-            result |= DecryptedBytes[offset++] << 16;
-            result |= DecryptedBytes[offset++] << 24;
+            result |= array[offset++];
+            result |= array[offset++] << 8;
+            result |= array[offset++] << 16;
+            result |= array[offset++] << 24;
 
             return result;
         }

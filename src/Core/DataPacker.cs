@@ -69,9 +69,7 @@ namespace CnDream.Core
                 bytesRead += bytesShouldRead;
                 tempWritten += bytesShouldRead;
 
-                WriteEpilogue(bytesShouldPad, TempBuffer, tempWritten);
-
-                tempWritten += bytesShouldPad;
+                tempWritten += WriteEpilogue(bytesShouldPad, TempBuffer, tempWritten);
             }
 
             // Transform bytes in TempBuffer
@@ -89,6 +87,8 @@ namespace CnDream.Core
 
                 if ( bytesShouldPad > 0 )
                 {
+                    // Transform last block
+
                     bytesShouldRead = inputBlockSize - bytesShouldPad;
 
                     Buffer.BlockCopy(inArray, inStart + bytesRead, TempBuffer, 0, bytesShouldRead);
