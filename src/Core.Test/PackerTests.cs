@@ -37,7 +37,8 @@ namespace CnDream.Core.Test
         private void VerifyOutput( byte[] input, byte[] output, int bytesWritten )
         {
             Assert.True(bytesWritten > input.Length);
-            Assert.True(bytesWritten > 0 && bytesWritten <= output.Length);
+            Assert.True(bytesWritten <= output.Length);
+            Assert.True(bytesWritten % (new IdentityTransformer().OutputBlockSize) == 0);
 
             var pos = ParseHeader(output, bytesWritten);
             Assert.True(pos > 0 && pos < bytesWritten - 1);
