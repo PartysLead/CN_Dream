@@ -58,8 +58,11 @@ namespace CnDream.Core
                 else
                 {
                     bytesShouldRead = inputCount;
-                    bytesShouldPad = inputBlockSize - (inputCount % inputBlockSize);
+                    bytesShouldPad = inputBlockSize - ((tempWritten + inputCount) % inputBlockSize);
                 }
+
+                Debug.Assert(tempWritten + bytesShouldRead + bytesShouldPad <= maxBytesCanTemp);
+                Debug.Assert((tempWritten + bytesShouldRead + bytesShouldPad) % inputBlockSize == 0);
 
                 Buffer.BlockCopy(inArray, inStart, TempBuffer, tempWritten, bytesShouldRead);
 
@@ -67,6 +70,8 @@ namespace CnDream.Core
                 tempWritten += bytesShouldRead;
 
                 WriteEpilogue(bytesShouldPad, TempBuffer, tempWritten);
+
+                tempWritten += bytesShouldPad;
             }
 
             // Transform bytes in TempBuffer
@@ -112,14 +117,14 @@ namespace CnDream.Core
         {
             var rand = new Random();
             var limit = offset + rand.Next(4, 9);
-            const int step = 10;
+            const int step = 31;
 
-            for ( int i = offset, v = rand.Next(step); i < limit; i++, v += rand.Next(step) )
+            for ( int i = offset, v = rand.Next(step); i < limit; i++, v += rand.Next(1, step) )
             {
                 array[i] = (byte)v;
             }
 
-            array[limit] = (byte)(array[limit - 1] - rand.Next(step));
+            array[limit] = (byte)(array[limit - 1] - rand.Next(1, step));
 
             bytesWritten = limit + 1;
         }
