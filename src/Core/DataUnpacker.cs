@@ -9,8 +9,8 @@ namespace CnDream.Core
     public class DataUnpacker : IDataUnpacker
     {
         readonly ICryptoTransform Decryptor;
-        readonly byte[] TempEncrypted, TempDecrypted;
-        int EnTempWritten, DeTempWritten, MaxBytesCanTemp;
+        readonly byte[] EncryptedBytes, DecryptedBytes;
+        int EncryptedCount, DecryptedCount, MaxBytesCanTemp;
         int PairId, SerialId, PayloadSize, PayloadWritten;
         bool HeaderRead;
 
@@ -18,8 +18,8 @@ namespace CnDream.Core
         {
             Decryptor = decryptor;
             MaxBytesCanTemp = DataPacker.GetTempBufferSize(decryptor);
-            TempEncrypted = new byte[MaxBytesCanTemp];
-            TempDecrypted = new byte[MaxBytesCanTemp];
+            EncryptedBytes = new byte[MaxBytesCanTemp];
+            DecryptedBytes = new byte[MaxBytesCanTemp];
         }
 
         public bool UnpackData
@@ -46,28 +46,30 @@ namespace CnDream.Core
 
             if ( PayloadWritten == 0 )
             {
-                if ( !HeaderRead && DeTempWritten > 0 )
+                if ( !HeaderRead && DecryptedCount > 0 )
                 {
                     HeaderRead = TryReadHeader();
                 }
 
                 while ( !HeaderRead && bytesRead < maxBytesCanRead )
                 {
-                    Debug.Assert(EnTempWritten == 0 || EnTempWritten % inputBlockSize != 0);
+                    // Read input block by block and try get the header out.
 
-                    var minNeededBytes = inputBlockSize - (EnTempWritten % inputBlockSize);
+                    Debug.Assert(EncryptedCount == 0 || EncryptedCount % inputBlockSize != 0);
+
+                    var minNeededBytes = inputBlockSize - (EncryptedCount % inputBlockSize);
                     Debug.Assert(minNeededBytes > 0);
 
-                    var bytesCanRead = Math.Min(minNeededBytes, Math.Min(MaxBytesCanTemp - EnTempWritten, maxBytesCanRead - bytesRead));
-                    Buffer.BlockCopy(inArray, inStart + bytesRead, TempEncrypted, EnTempWritten, bytesCanRead);
+                    var bytesToRead = Math.Min(minNeededBytes, Math.Min(MaxBytesCanTemp - EncryptedCount, maxBytesCanRead - bytesRead));
+                    Buffer.BlockCopy(inArray, inStart + bytesRead, EncryptedBytes, EncryptedCount, bytesToRead);
 
-                    bytesRead += bytesCanRead;
-                    EnTempWritten += bytesCanRead;
+                    bytesRead += bytesToRead;
+                    EncryptedCount += bytesToRead;
 
-                    if ( EnTempWritten % inputBlockSize == 0 )
+                    if ( EncryptedCount % inputBlockSize == 0 )
                     {
-                        DeTempWritten += Decryptor.TransformBlock(TempEncrypted, 0, EnTempWritten, TempDecrypted, DeTempWritten);
-                        EnTempWritten = 0;
+                        DecryptedCount += Decryptor.TransformBlock(EncryptedBytes, 0, EncryptedCount, DecryptedBytes, DecryptedCount);
+                        EncryptedCount = 0;
 
                         HeaderRead = TryReadHeader();
                     }
@@ -93,24 +95,24 @@ namespace CnDream.Core
             serialId = SerialId;
             payloadSize = PayloadSize;
 
-            if ( DeTempWritten > 0 )
+            if ( DecryptedCount > 0 )
             {
                 Debug.Assert(bytesWritten == 0);
 
-                bytesWritten = Math.Min(payloadSize - PayloadWritten, Math.Min(DeTempWritten, maxBytesCanWrite));
+                bytesWritten = Math.Min(payloadSize - PayloadWritten, Math.Min(DecryptedCount, maxBytesCanWrite));
                 PayloadWritten += bytesWritten;
 
-                Buffer.BlockCopy(TempDecrypted, 0, outArray, outStart, bytesWritten);
+                Buffer.BlockCopy(DecryptedBytes, 0, outArray, outStart, bytesWritten);
 
-                var newDeTempSize = DeTempWritten - bytesWritten;
+                var newDeTempSize = DecryptedCount - bytesWritten;
                 if ( newDeTempSize > 0 )
                 {
-                    Buffer.BlockCopy(TempDecrypted, bytesWritten, TempDecrypted, 0, newDeTempSize);
+                    Buffer.BlockCopy(DecryptedBytes, bytesWritten, DecryptedBytes, 0, newDeTempSize);
                 }
 
-                DeTempWritten = newDeTempSize;
+                DecryptedCount = newDeTempSize;
 
-                if ( bytesWritten < DeTempWritten )
+                if ( bytesWritten < DecryptedCount )
                 {
                     if ( PayloadWritten == payloadSize )
                     {
@@ -122,7 +124,7 @@ namespace CnDream.Core
                 }
             }
 
-            Debug.Assert(DeTempWritten == 0);
+            Debug.Assert(DecryptedCount == 0);
 
             var payloadLeft = payloadSize - PayloadWritten;
             var outputBlocksLeft = (maxBytesCanWrite - bytesWritten) / outputBlockSize;
@@ -153,23 +155,23 @@ namespace CnDream.Core
                 }
                 else
                 {
-                    DeTempWritten = Decryptor.TransformBlock(inArray, inStart + bytesRead, inputBlockSize, TempDecrypted, 0) - paddings;
+                    DecryptedCount = Decryptor.TransformBlock(inArray, inStart + bytesRead, inputBlockSize, DecryptedBytes, 0) - paddings;
                 }
 
                 bytesRead += inputBlockSize;
             }
 
-            return bytesWritten > 0 || DeTempWritten > 0;
+            return bytesWritten > 0 || DecryptedCount > 0;
         }
 
         private bool TryReadHeader()
         {
-            var limit = DeTempWritten;
+            var limit = DecryptedCount;
 
             int i;
             for ( i = 1; i < limit; i++ )
             {
-                if ( TempDecrypted[i] < TempDecrypted[i - 1] )
+                if ( DecryptedBytes[i] < DecryptedBytes[i - 1] )
                 {
                     i++;
                     break;
@@ -188,9 +190,9 @@ namespace CnDream.Core
             var remainingDecrypted = limit - i;
             if ( remainingDecrypted > 0 )
             {
-                Buffer.BlockCopy(TempDecrypted, i, TempDecrypted, 0, remainingDecrypted);
+                Buffer.BlockCopy(DecryptedBytes, i, DecryptedBytes, 0, remainingDecrypted);
             }
-            DeTempWritten = remainingDecrypted;
+            DecryptedCount = remainingDecrypted;
 
             return true;
         }
@@ -199,10 +201,10 @@ namespace CnDream.Core
         {
             var result = 0;
 
-            result |= TempDecrypted[offset++];
-            result |= TempDecrypted[offset++] << 8;
-            result |= TempDecrypted[offset++] << 16;
-            result |= TempDecrypted[offset++] << 24;
+            result |= DecryptedBytes[offset++];
+            result |= DecryptedBytes[offset++] << 8;
+            result |= DecryptedBytes[offset++] << 16;
+            result |= DecryptedBytes[offset++] << 24;
 
             return result;
         }
