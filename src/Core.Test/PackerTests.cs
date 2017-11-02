@@ -14,10 +14,12 @@ namespace CnDream.Core.Test
             var input = new byte[5];
 
             new Random().NextBytes(input);
+            var inputCopy = new byte[input.Length];
+            Array.Copy(input, inputCopy, input.Length);
 
             var bytesWritten = packer.PackData(1, 2, new ArraySegment<byte>(input), new ArraySegment<byte>(output));
 
-            VerifyOutput(input, output, bytesWritten);
+            VerifyOutput(inputCopy, output, bytesWritten);
         }
 
         [Fact]
@@ -28,10 +30,12 @@ namespace CnDream.Core.Test
             var input = new byte[128];
 
             new Random().NextBytes(input);
+            var inputCopy = new byte[input.Length];
+            Array.Copy(input, inputCopy, input.Length);
 
             var bytesWritten = packer.PackData(1, 2, new ArraySegment<byte>(input), new ArraySegment<byte>(output));
 
-            VerifyOutput(input, output, bytesWritten);
+            VerifyOutput(inputCopy, output, bytesWritten);
         }
 
         private void VerifyOutput( byte[] input, byte[] output, int bytesWritten )
