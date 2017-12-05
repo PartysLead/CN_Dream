@@ -30,7 +30,7 @@ namespace CnDream.Core.Test
                 out var bytesWritten, out var bytesRead,
                 out var pairId, out var serialId, out var payloadSize, new ArraySegment<byte>(input));
 
-            Assert.Equal(true, unpacked);
+            Assert.True(unpacked);
 
             Assert.Equal(payloadSize, bytesWritten);
             Assert.Equal(input.Length, bytesRead);
@@ -67,7 +67,7 @@ namespace CnDream.Core.Test
                     out bytesWritten, out bytesRead,
                     out pairId, out serialId, out payloadSize, new ArraySegment<byte>(input, i * 4, 4));
 
-                Assert.Equal(false, unpacked);
+                Assert.False(unpacked);
             }
 
             unpacked = unpacker.UnpackData(
@@ -75,7 +75,7 @@ namespace CnDream.Core.Test
                 out bytesWritten, out bytesRead,
                 out pairId, out serialId, out payloadSize, new ArraySegment<byte>(input, 4 * 4, 16));
 
-            Assert.Equal(true, unpacked);
+            Assert.True(unpacked);
 
             Assert.Equal(payloadSize, bytesWritten);
             Assert.Equal(16, bytesRead);
